@@ -712,7 +712,7 @@ class WorkerBase(ABC):
             x, y = self._resocalc.get_coords_quest_menu(self)[0], \
                    self._resocalc.get_coords_quest_menu(self)[1]
             self._communicator.click(int(x), int(y))
-            time.sleep(5)
+            time.sleep(3)
             self._takeScreenshot(delayBefore=self.get_devicesettings_value("post_screenshot_delay", 1),
                                  delayAfter=2)
             if questloop > 5:
@@ -743,7 +743,7 @@ class WorkerBase(ABC):
         # Disable vibration
         # This only needs to be done once per boot
         # So, we'll just do it when pogo actually needs starting
-        self._communicator.passthrough("su -c chmod 444 /sys/devices/virtual/timed_output/vibrator/enable")
+        # self._communicator.passthrough("su -c chmod 444 /sys/devices/virtual/timed_output/vibrator/enable")
 
         cur_time = time.time()
         start_result = False
