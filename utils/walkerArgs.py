@@ -250,6 +250,9 @@ def parseArgs():
                         help='Defines directory to save created madmin map geofence files',
                         default='configs/geofences')
 
+    parser.add_argument('-jtc', '--job_thread_count', type=int, default=2,
+                        help='Amount of threads to work off the device jobs. Default: 2.')
+
     # etc
 
     parser.add_argument('-rdt', '--raid_time', default='45', type=int,
@@ -341,5 +344,9 @@ def parseArgs():
     args.log_filename = strftime(args.log_filename)
     args.log_filename = args.log_filename.replace('<sn>', '<SN>')
     args.log_filename = args.log_filename.replace('<SN>', args.status_name)
+
+    args.config_mode = True
+    if sys.argv[0].split('/')[-1] == 'start.py':
+        args.config_mode = False
 
     return args
