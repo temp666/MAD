@@ -774,7 +774,7 @@ class PogoWindows:
 
         try:
                 returning_dict = pytesseract.image_to_data(screenshot, output_type=Output.DICT, timeout=40,
-                                                           config='--dpi 70')
+                                                           config='--dpi 300')
         except Exception as e:
             logger.error("Tesseract Error for device {}: {} with exception {}".format(str(identifier), str(returning_dict), str(e)))
             returning_dict = []
