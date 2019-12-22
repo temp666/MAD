@@ -4,7 +4,6 @@ import math
 import os
 import os.path
 import time
-import sys
 from multiprocessing.pool import ThreadPool
 
 import cv2
@@ -776,8 +775,8 @@ class PogoWindows:
         try:
                 returning_dict = pytesseract.image_to_data(screenshot, output_type=Output.DICT, timeout=40,
                                                            config='--dpi 70')
-        except:
-            logger.error("Tesseract Error for device {}: {} with exception {}".format(str(identifier), str(returning_dict), str(sys.exc_info()[0])))
+        except Exception as e:
+            logger.error("Tesseract Error for device {}: {} with exception {}".format(str(identifier), str(returning_dict), str(e)))
             returning_dict = []
 
         if isinstance(returning_dict, dict):
