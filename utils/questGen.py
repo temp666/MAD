@@ -2,6 +2,7 @@ import gettext
 import json
 import re
 
+from utils.gamemechanicutil import form_mapper
 from utils.language import i8ln, open_json_file
 
 gettext.find('quest', 'locales', all=True)
@@ -24,7 +25,9 @@ def generate_quest(quest):
     pokemon_id = '000'
     pokemon_name = ''
     item_type = ''
-    pokemon_form = extractForm(quest["quest_reward"])
+    pokemon_form = '00'
+    pokemon_costume = '00'
+    pokemon_asset_bundle = '00'
 
     if quest_reward_type == _('Item'):
         item_amount = quest['quest_item_amount']
@@ -37,6 +40,10 @@ def generate_quest(quest):
         item_type = 'Pokemon'
         pokemon_name = i8ln(pokemonname(str(quest['quest_pokemon_id'])))
         pokemon_id = quest['quest_pokemon_id']
+        pokemon_form = quest['quest_pokemon_form_id']
+        pokemon_costume = quest['quest_pokemon_costume_id']
+        if pokemon_form != '00':
+            pokemon_asset_bundle = form_mapper(int(pokemon_id), pokemon_form)
 
     if not quest['task']:
         quest_task = questtask(
@@ -57,6 +64,8 @@ def generate_quest(quest):
         'pokemon_id': pokemon_id,
         'pokemon_name': pokemon_name,
         'pokemon_form': pokemon_form,
+        'pokemon_asset_bundle_id': pokemon_asset_bundle,
+        'pokemon_costume': pokemon_costume,
         'quest_type': quest_type,
         'quest_type_raw': quest['quest_type'],
         'quest_reward_type': quest_reward_type,
@@ -64,7 +73,8 @@ def generate_quest(quest):
         'quest_task': quest_task,
         'quest_target': quest['quest_target'],
         'quest_condition': quest['quest_condition'],
-        'quest_template': quest['quest_template']
+        'quest_template': quest['quest_template'],
+
     })
     return quest_raw
 
@@ -116,6 +126,10 @@ def questtask(typeid, condition, target):
     arr = {}
     arr['0'] = target
     text = questtype(typeid)
+    # TODO use the dict instead of regex parsing in all logic
+    condition_dict = {}
+    if condition is not None and condition != '':
+        condition_dict = json.loads(condition)
 
     if typeid == 4:
         arr['wb'] = ""
@@ -307,15 +321,18 @@ def questtask(typeid, condition, target):
                         cur += 1
     elif typeid == 29:
         # QUEST_BATTLE_TEAM_ROCKET Team Go rucket grunt batles.
-        # Condition type 27 means against a grunt leader WITH_INVASION_CHARACTER
-        if re.search(r'"type": 27', condition) is not None:
-            text = _('Battle {0} times against the Team GO Rocket Leaders')
-        elif int(target) == int(1):
+        # Condition type 27 means against a grunt leader WITH_INVASION_CHARACTER= 1
+        if int(target) == int(1):
             text = _('Battle against a Team Rocket Grunt')
 
-        # Condition type 18 means win a battle
-        if re.search(r'"type": 18', condition) is not None:
-            text = text.replace(_('Battle'), _('Win'))
+        for con in condition_dict:
+            if con.get('type', 0) == 27 and con.get('with_invasion_character',{}).get('category') == 1:
+                text = _('Battle {0} times against the Team GO Rocket Leaders')
+                # TODO Handle category for specific team leaders as well (Arlo, Cliff, Sierra)
+            if con.get('type', 0) == 18:
+                # Condition type 18 means win a battle
+                # TODO change WIN to Defeat like in-game
+                text = text.replace(_('Battle'), _('Win'))
 
     if int(target) == int(1):
         text = text.replace(_(' Eggs'), _('n Egg'))

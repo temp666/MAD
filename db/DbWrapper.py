@@ -208,7 +208,8 @@ class DbWrapper:
         query = (
             "SELECT latitude, longitude, encounter_id, "
             "UNIX_TIMESTAMP(CONVERT_TZ(disappear_time + INTERVAL 1 HOUR, '+00:00', @@global.time_zone)), "
-            "UNIX_TIMESTAMP(CONVERT_TZ(last_modified, '+00:00', @@global.time_zone)) "
+            "UNIX_TIMESTAMP(CONVERT_TZ(last_modified, '+00:00', @@global.time_zone)), "
+            "UNIX_TIMESTAMP(last_modified)"
             "FROM pokemon "
             "WHERE "
             "latitude >= %s AND longitude >= %s AND "
@@ -222,10 +223,10 @@ class DbWrapper:
         params = params + (latest, )
         res = self.execute(query, params)
         list_of_coords = []
-        for (latitude, longitude, encounter_id, disappear_time, last_modified) in res:
+        for (latitude, longitude, encounter_id, disappear_time, last_modified, gmt_last_modified) in res:
             list_of_coords.append(
                 [latitude, longitude, encounter_id, disappear_time, last_modified])
-            latest = max(latest, last_modified)
+            latest = max(latest, gmt_last_modified)
 
         encounter_id_coords = geofence_helper.get_geofenced_coordinates(
             list_of_coords)
@@ -276,7 +277,8 @@ class DbWrapper:
 
         query = (
             "SELECT pokestop.pokestop_id, pokestop.latitude, pokestop.longitude, trs_quest.quest_type, "
-            "trs_quest.quest_stardust, trs_quest.quest_pokemon_id, trs_quest.quest_reward_type, "
+            "trs_quest.quest_stardust, trs_quest.quest_pokemon_id, trs_quest.quest_pokemon_form_id, "
+            "trs_quest.quest_pokemon_costume_id, trs_quest.quest_reward_type, "
             "trs_quest.quest_item_id, trs_quest.quest_item_amount, pokestop.name, pokestop.image, "
             "trs_quest.quest_target, trs_quest.quest_condition, trs_quest.quest_timestamp, "
             "trs_quest.quest_task, trs_quest.quest_reward, trs_quest.quest_template "
@@ -311,14 +313,18 @@ class DbWrapper:
 
         res = self.execute(query + query_where)
 
-        for (pokestop_id, latitude, longitude, quest_type, quest_stardust, quest_pokemon_id, quest_reward_type,
+        for (pokestop_id, latitude, longitude, quest_type, quest_stardust, quest_pokemon_id,
+             quest_pokemon_form_id, quest_pokemon_costume_id, quest_reward_type,
              quest_item_id, quest_item_amount, name, image, quest_target, quest_condition,
              quest_timestamp, quest_task, quest_reward, quest_template) in res:
             mon = "%03d" % quest_pokemon_id
+            form_id = "%02d" % quest_pokemon_form_id
+            costume_id = "%02d" % quest_pokemon_costume_id
             questinfo[pokestop_id] = ({
                 'pokestop_id': pokestop_id, 'latitude': latitude, 'longitude': longitude,
                 'quest_type': quest_type, 'quest_stardust': quest_stardust,
-                'quest_pokemon_id': mon,
+                'quest_pokemon_id': mon, 'quest_pokemon_form_id': form_id,
+                'quest_pokemon_costume_id': costume_id,
                 'quest_reward_type': quest_reward_type, 'quest_item_id': quest_item_id,
                 'quest_item_amount': quest_item_amount, 'name': name, 'image': image,
                 'quest_target': quest_target,
@@ -834,9 +840,6 @@ class DbWrapper:
             "FROM trs_spawn "
             "WHERE calc_endminsec IS NOT NULL "
             "AND (latitude >= {} AND longitude >= {} AND latitude <= {} AND longitude <= {}) "
-            "AND DATE_FORMAT(STR_TO_DATE(calc_endminsec,'%i:%s'),'%i:%s') BETWEEN DATE_FORMAT(DATE_ADD(NOW(), "
-            " INTERVAL if(spawndef=15,60,30) MINUTE),'%i:%s') "
-            "AND DATE_FORMAT(DATE_ADD(NOW(), INTERVAL if(spawndef=15,70,40) MINUTE),'%i:%s')"
         ).format(minLat, minLon, maxLat, maxLon)
 
         res = self.execute(query)
