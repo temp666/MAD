@@ -89,12 +89,12 @@
                         System
                     </a>
                       <div class="dropdown-menu"i aria-labelledby="navbarDropdown">
-                      <a href="{{ url_for('mad_apks') }}" class="dropdown-item">MADmin APKs</a>
-
-                          <div class="darkmode_check">
-                              <input class="form-check-input" type="checkbox" value="" id="darkSwitch">
-                              <label class="form-check-label" for="darkSwitch">Darkmode</label>
-                          </div>
+                        <a href="{{ url_for('mad_apks') }}" class="dropdown-item">MADmin APKs</a>
+                        <a href="{{ url_for('events') }}" class="dropdown-item">MAD Events</a>
+                        <div class="darkmode_check">
+                          <input class="darkmode-input" type="checkbox" value="" id="darkSwitch">
+                          <label class="darkmode-label" for="darkSwitch">Darkmode</label>
+                        </div>
                     </div>
                   </li>
               </ul>
@@ -115,9 +115,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.19/js/jquery.dataTables.min.js" integrity="sha384-rgWRqC0OFPisxlUvl332tiM/qmaNxnlY46eksSZD84t+s2vZlqGeHrncwIRX7CGp" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.blockUI/2.70/jquery.blockUI.min.js" integrity="sha256-9wRM03dUw6ABCs+AU69WbK33oktrlXamEXMvxUaF+KU=" crossorigin="anonymous"></script>
     <script src="https://cdn.datatables.net/responsive/2.2.3/js/dataTables.responsive.min.js" crossorigin="anonymous"></script>
-    <script src="{{ url_for('static', filename='js/dark-mode-switch.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dark-mode-switch.js') }}"></script>
     <script>
+
       $(document).ready(function() {
+          if (darkSwitch) {
+              initTheme();
+              darkSwitch.addEventListener('change', () => {
+                  resetTheme();
+              });
+          }
+
+        $("body").css("visibility","visible");
+
+
         $('[data-toggle="tooltip"]').tooltip();
 
         $("#reload").click(function() {
