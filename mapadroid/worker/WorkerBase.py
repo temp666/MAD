@@ -27,6 +27,8 @@ from mapadroid.utils.resolution import Resocalculator
 from mapadroid.utils.routeutil import check_walker_value_type
 from mapadroid.websocket.AbstractCommunicator import AbstractCommunicator
 from mapadroid.worker.AbstractWorker import AbstractWorker
+from mapadroid.utils.geo import get_distance_of_two_points_in_meters
+from mapadroid.utils.s2Helper import S2Helper
 
 
 class WorkerBase(AbstractWorker):
@@ -1194,4 +1196,6 @@ class WorkerBase(AbstractWorker):
             self._origin), str(self._screen_x), str(self._screen_y), str(x_offset), str(y_offset))
         self._resocalc.get_x_y_ratio(
             self, self._screen_x, self._screen_y, x_offset, y_offset)
+
+
 

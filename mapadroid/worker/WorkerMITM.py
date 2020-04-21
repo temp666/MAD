@@ -197,11 +197,9 @@ class WorkerMITM(MITMBase):
             # TODO: here we have the latest update of encountered mons.
             # self._encounter_ids contains the complete dict.
             # encounter_ids only contains the newest update.
-        self._mitm_mapper.update_latest(origin=self._origin, key="ids_encountered",
-                                        values_dict=self._encounter_ids)
+        self._mitm_mapper.update_latest(origin=self._origin, key="ids_encountered", values_dict=self._encounter_ids)
         self._mitm_mapper.update_latest(origin=self._origin, key="ids_iv", values_dict=ids_iv)
-        self._mitm_mapper.update_latest(origin=self._origin, key="injected_settings",
-                                        values_dict=injected_settings)
+        self._mitm_mapper.update_latest(origin=self._origin, key="injected_settings", values_dict=injected_settings)
 
     def _wait_data_worker(self, latest, proto_to_wait_for, timestamp):
         data_requested = LatestReceivedType.UNDEFINED
@@ -233,18 +231,20 @@ class WorkerMITM(MITMBase):
                     for data_extract in latest_data['payload']['cells']:
                         for WP in data_extract['wild_pokemon']:
                             # TODO: teach Prio Q / Clusterer to hold additional data such as mon/encounter IDs
-                            if WP['spawnpoint_id']:
+                            if WP['spawnpoint_id'] and self._check_data_distance(latest_data['payload']['cells']):
                                 data_requested = latest_data
                                 break
+                        if data_requested == latest_data: break
                     if data_requested is None or data_requested == LatestReceivedType.UNDEFINED:
                         logger.debug("No spawnpoints in data requested")
                         time.sleep(1)
                 elif mode in ["raids_mitm"]:
                     for data_extract in latest_data['payload']['cells']:
                         for forts in data_extract['forts']:
-                            if forts['id']:
+                            if forts['id'] and self._check_data_distance(latest_data['payload']['cells']):
                                 data_requested = latest_data
                                 break
+                        if data_requested == latest_data: break
                     if data_requested is None:
                         logger.debug("No forts in data received")
                         time.sleep(0.5)

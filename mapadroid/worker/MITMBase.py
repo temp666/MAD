@@ -3,12 +3,15 @@ import time
 from abc import abstractmethod
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from mapadroid.mitm_receiver.MitmMapper import MitmMapper
 from mapadroid.ocr.pogoWindows import PogoWindows
 from mapadroid.utils import MappingManager
+from mapadroid.utils.geo import get_distance_of_two_points_in_meters
 from mapadroid.utils.logging import logger
 from mapadroid.utils.madGlobals import InternalStopWorkerException
+from mapadroid.utils.s2Helper import S2Helper
 from mapadroid.websocket.AbstractCommunicator import AbstractCommunicator
 from mapadroid.worker.WorkerBase import WorkerBase
 
@@ -51,6 +54,59 @@ class MITMBase(WorkerBase):
                                                      self._routemanager_name),
                                                  99)
 
+    def _check_data_distance(self, data):
+        max_radius = self._mapping_manager.routemanager_get_max_radius(self._routemanager_name)
+        if not max_radius:
+            return True
+        mode = self._mapping_manager.routemanager_get_mode(self._routemanager_name)
+        if mode in ["mon_mitm", "iv_mitm"]:
+            data_to_check = "wild_pokemon"
+        else:
+            data_to_check = "forts"
+        lat_sum, lng_sum, counter = 0, 0, 0
+
+        if data_to_check == "forts":
+            for cell in data:
+                if cell[data_to_check]:
+                    cell_id = cell["id"]
+                    if cell_id < 0:
+                        cell_id = cell_id + 2 ** 64
+                    lat, lng, alt = S2Helper.get_position_from_cell(cell_id)
+                    counter += 1
+                    lat_sum += lat
+                    lng_sum += lng
+        else:
+            for cell in data:
+                for element in cell[data_to_check]:
+                    counter += 1
+                    lat_sum += element["latitude"]
+                    lng_sum += element["longitude"]
+
+        if counter == 0:
+            return None
+        avg_lat = lat_sum / counter
+        avg_lng = lng_sum / counter
+        distance = get_distance_of_two_points_in_meters(float(avg_lat),
+                                                        float(avg_lng),
+                                                        float(self.current_location.lat),
+                                                        float(self.current_location.lng))
+        if distance > max_radius:
+            logger.debug2("Data is too far away!! avg location {}, {} from "
+                "data with self.current_location location {}, {} - that's a "
+                "{}m distance with max_radius {} for mode {}", avg_lat, avg_lng,
+                                                self.current_location.lat,
+                                                self.current_location.lng,
+                                                distance, max_radius, mode)
+            return False
+        else:
+            logger.debug("Data distance is ok! found avg location {}, {} "
+                "from data with self.current_location location {}, {} - that's "
+                "a {}m distance with max_radius {} for mode {}", avg_lat, avg_lng,
+                                                  self.current_location.lat,
+                                                  self.current_location.lng,
+                                                  distance, max_radius, mode)
+            return True
+
     def _wait_for_data(self, timestamp: float = None, proto_to_wait_for=106, timeout=None):
         if timestamp is None:
             timestamp = time.time()
@@ -81,8 +137,24 @@ class MITMBase(WorkerBase):
         while data_requested == LatestReceivedType.UNDEFINED and timestamp + timeout >= int(time.time()) \
                 and not self._stop_worker_event.is_set():
             latest = self._mitm_mapper.request_latest(self._origin)
-            data_requested = self._wait_data_worker(
-                latest, proto_to_wait_for, timestamp)
+            latest_location: Optional[Location] = latest.get("location", None)
+            check_data = True
+            if latest_location is not None and latest_location.lat != 0.0 and latest_location.lng != 0.0:
+                logger.debug("Checking worker location {} against real data location {}", self.current_location,
+                             latest_location)
+                distance_to_data = get_distance_of_two_points_in_meters(float(latest_location.lat),
+                                                                        float(latest_location.lng),
+                                                                        float(self.current_location.lat),
+                                                                        float(self.current_location.lng))
+                max_distance_for_worker = self._mapping_manager.routemanager_get_max_radius(self._routemanager_name)
+                logger.debug("Distance of worker {} to data location: {}", str(self._origin), str(distance_to_data))
+                if max_distance_for_worker and distance_to_data > max_distance_for_worker:
+                    logger.warning("Real data too far from worker position, waiting...")
+                    check_data = False
+
+            if check_data:
+                data_requested = self._wait_data_worker(
+                    latest, proto_to_wait_for, timestamp)
             if not self._mapping_manager.routemanager_present(self._routemanager_name) \
                     or self._stop_worker_event.is_set():
                 logger.error("Worker {} get killed while sleeping", str(self._origin))
