@@ -82,6 +82,9 @@ def parseArgs():
                             'gym. Default: 3.5'))
     parser.add_argument('--enable_worker_specific_extra_start_stop_handling', default=False,
                         help='Option to enable/disable extra handling for the start/stop routine of workers')
+    parser.add_argument('-mvd', '--maximum_valid_distance', required=False, type=int, default=50,
+                        help='The maximum distance for a scan of a location to be considered a valid/correct scan of'
+                             ' that location in meters. Default: 50m.')
 
     # job processor
     parser.add_argument('-jobdtwh', '--job_dt_wh', action='store_true', default=False,
@@ -270,6 +273,9 @@ def parseArgs():
 
     parser.add_argument('-ggrs', '--game_stats_raw', action='store_true', default=False,
                         help='Generate worker raw stats (only with --game_stats)')
+
+    parser.add_argument('-rds', '--raw_delete_shiny', default=0,
+                        help='Delete shiny mon in raw stats older then x days (0 =  Disable (Default))')
 
     # adb
     parser.add_argument('-adb', '--use_adb', action='store_true', default=False,
