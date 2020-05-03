@@ -30,6 +30,7 @@ MAD_UPDATES = OrderedDict([
     (26, 'patch_26'),
     (27, 'patch_27'),
     (28, 'patch_28'),
+    (29, 'patch_29'),
 ])
 
 
@@ -169,6 +170,12 @@ class MADPatcher(object):
               ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         self.dbwrapper.execute(sql, commit=True, suppress_log=True)
 
+    def __add_default_event(self):
+        sql = "INSERT IGNORE into `trs_event` " \
+              "(`id`, `event_name`, `event_start`, `event_end`, `event_lure_duration`) values " \
+              "('1', 'DEFAULT', '1970-01-01', '2099-12-31', 30)"
+        self.dbwrapper.execute(sql, commit=True, suppress_log=True)
+
     def __install_schema(self):
         try:
             with open('scripts/SQL/rocketmap.sql') as fh:
@@ -179,6 +186,7 @@ class MADPatcher(object):
                     self.dbwrapper.execute(install_cmd % args, commit=True, suppress_log=True)
             self.__set_installed_ver(self._madver)
             logger.success('Successfully installed MAD version {} to the database', self._installed_ver)
+            self.__add_default_event()
             self.__reload_instance_id()
         except Exception:
             logger.critical('Unable to install default MAD schema.  Please install the schema from '
