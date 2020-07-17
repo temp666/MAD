@@ -1,20 +1,20 @@
 import json
 import os
 import re
-
 from flask import (render_template, request, redirect, url_for, Response)
 from flask_caching import Cache
-
 from mapadroid.madmin.functions import auth_required
 from mapadroid.utils.MappingManager import MappingManager
 from mapadroid.utils.adb import ADBConnect
 from mapadroid.utils.language import i8ln, open_json_file
-from mapadroid.utils.logging import logger
 from mapadroid.data_manager.dm_exceptions import (
     ModeNotSpecified,
     ModeUnknown
 )
+from mapadroid.utils.logging import get_logger, LoggerEnums
 
+
+logger = get_logger(LoggerEnums.madmin)
 cache = Cache(config={'CACHE_TYPE': 'simple'})
 
 
@@ -35,8 +35,6 @@ class config(object):
         cache.init_app(self._app)
         self._mapping_mananger = mapping_manager
 
-        self.add_route()
-
     def add_route(self):
         routes = [
             ("/settings", self.settings),
@@ -55,6 +53,9 @@ class config(object):
         ]
         for route, view_func in routes:
             self._app.route(route, methods=['GET', 'POST'])(view_func)
+
+    def start_modul(self):
+        self.add_route()
 
     def get_pokemon(self):
         mondata = open_json_file('pokemon')
@@ -189,6 +190,24 @@ class config(object):
         raw_fences = self._data_manager.get_root_resource('geofence')
         for fence_id, fence_data in raw_fences.items():
             fences[fence_id] = fence_data['name']
+
+        # check if we can use ortools and if it's installed
+        ortools_info = False
+
+        try:
+            from ortools.constraint_solver import routing_enums_pb2
+            from ortools.constraint_solver import pywrapcp
+        except Exception:
+            pass
+        import platform
+
+        if platform.architecture()[0] == "64bit":
+            try:
+                pywrapcp
+                routing_enums_pb2
+            except Exception:
+                ortools_info = True
+
         required_data = {
             'identifier': 'id',
             'base_uri': 'api_area',
@@ -203,6 +222,7 @@ class config(object):
             },
             'passthrough': {
                 'config_mode': self._args.config_mode,
+                'ortools_info': ortools_info,
                 'fences': fences
             },
             'mode_required': True

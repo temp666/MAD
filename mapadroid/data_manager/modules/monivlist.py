@@ -1,7 +1,10 @@
 import mysql.connector
 from typing import Optional, List, Tuple
 from .resource import Resource
-from mapadroid.utils.logging import logger
+from mapadroid.utils.logging import  get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.data_manager)
 
 
 class MonIVList(Resource):
@@ -69,5 +72,5 @@ class MonIVList(Resource):
             try:
                 self._dbc.autoexec_insert('settings_monivlist_to_mon', mon_data)
             except mysql.connector.Error:
-                logger.info('Duplicate pokemon %s detected in list %s' % (mon, self.identifier,))
+                logger.info('Duplicate pokemon {} detected in list {}', mon, self.identifier,)
         return self.identifier

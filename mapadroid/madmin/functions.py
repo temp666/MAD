@@ -113,6 +113,11 @@ def generate_device_screenshot_path(phone_name: str, device_mappings: dict, args
     return os.path.join(args.temp_path, screenshot_filename)
 
 
+def generate_device_logcat_zip_path(origin: str, args: dict):
+    filename = "logcat_{}.zip".format(origin)
+    return os.path.join(args.temp_path, filename)
+
+
 def get_geofences(mapping_manager, data_manager, fence_type=None, area_id_req=None):
     areas = mapping_manager.get_areas()
     geofences = {}
@@ -126,7 +131,7 @@ def get_geofences(mapping_manager, data_manager, fence_type=None, area_id_req=No
             geo_exclude = data_manager.get_resource('geofence', identifier=geo_exclude_id)
         if fence_type is not None and area['mode'] != fence_type:
             continue
-        area_geofences = GeofenceHelper(geo_include, geo_exclude)
+        area_geofences = GeofenceHelper(geo_include, geo_exclude, area['name'])
         include = {}
         exclude = {}
         for fences in area_geofences.geofenced_areas:
@@ -147,7 +152,8 @@ def get_geofences(mapping_manager, data_manager, fence_type=None, area_id_req=No
             'include': include,
             'exclude': exclude,
             'mode': area['mode'],
-            'area_id': area_id
+            'area_id': area_id,
+            'name': area['name']
         }
     return geofences
 

@@ -7,8 +7,8 @@ class ScreenType(Enum):
     RETURNING = 2  # returning player screen
     LOGINSELECT = 3  # login selection regarding OAUTH
     PTC = 4  # PTC login
-    FAILURE = 5  # login failure
-    RETRY = 6  # auth failed, retry screen
+    FAILURE = 5  # Unable to authenticate. Please try again. One green button: OK
+    RETRY = 6  # Failed to log in. Green button on top: RETRY - no background button below: TRY A DIFFERENT ACCOUNT
     WRONG = 7  # incorrect credentials?
     GAMEDATA = 8  # game data could not be fetched from server
     GGL = 10  # Google account picker
@@ -23,6 +23,7 @@ class ScreenType(Enum):
     QUEST = 20  # research menu / quest listing (pogo)
     GPS = 21  # GPS signal not found error message (pogo)
     CREDENTIALS = 22  # new GrantCredentials dialog
+    NOGGL = 23 # loginselect, but without the google button (probably failed to set a correct birthdate)
     POGO = 99  # uhm, whatever... At least pogo is topmost, no idea where we are yet tho (in the process of switching)
     ERROR = 100  # some issue occurred while handling screentypes or not able to determine screen
     BLACK = 110  # screen is black, likely loading up game

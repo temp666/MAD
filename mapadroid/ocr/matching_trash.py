@@ -1,13 +1,14 @@
 import os
 from typing import List
-
 import cv2
 import imutils
 import numpy as np
-
 import mapadroid
 from mapadroid.utils.collections import Trash
-from mapadroid.utils.logging import logger
+from mapadroid.utils.logging import get_logger, LoggerEnums, get_origin_logger
+
+
+logger = get_logger(LoggerEnums.ocr)
 
 
 def get_delete_quest_coords(x):
@@ -20,14 +21,15 @@ def get_delete_item_coords(x):
     return click_x
 
 
-def trash_image_matching(screen_img, full_screen):
+def trash_image_matching(origin, screen_img, full_screen):
+    origin_logger = get_origin_logger(logger, origin=origin)
     clicklist: List[Trash] = []
     screen = cv2.imread(screen_img)
     # print (screen.shape[:2])
     screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
 
     if screen is None:
-        logger.error('trash_image_matching: {} appears to be corrupted', str(screen_img))
+        origin_logger.error('trash_image_matching: {} appears to be corrupted', screen_img)
         return None
 
     trash = cv2.imread(os.path.join(mapadroid.MAD_ROOT, 'static/img/trashcan.png'), 0)

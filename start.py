@@ -7,7 +7,6 @@ if py_version.major < 3 or (py_version.major == 3 and py_version.minor < 6):
     sys.exit(1)
 from multiprocessing import Process
 from typing import Optional
-
 import calendar
 import datetime
 import gc
@@ -15,15 +14,11 @@ import os
 import pkg_resources
 import time
 from threading import Thread, active_count
-
 import psutil
-
 from mapadroid.utils.MappingManager import MappingManager, MappingManagerManager
-from mapadroid.utils.local_api import LocalAPI
 from mapadroid.db.DbFactory import DbFactory
 from mapadroid.mitm_receiver.MitmMapper import MitmMapper, MitmMapperManager
 from mapadroid.mitm_receiver.MITMReceiver import MITMReceiver
-from mapadroid.utils.logging import initLogging, logger
 from mapadroid.utils.madGlobals import terminate_mad
 from mapadroid.utils.rarity import Rarity
 from mapadroid.utils.event import Event
@@ -32,12 +27,19 @@ from mapadroid.utils.walkerArgs import parseArgs
 from mapadroid.websocket.WebsocketServer import WebsocketServer
 from mapadroid.utils.updater import deviceUpdater
 from mapadroid.data_manager import DataManager
-
+from mapadroid.ocr.pogoWindows import PogoWindows
+from mapadroid.webhook.webhookworker import WebhookWorker
+from mapadroid.mad_apk import get_storage_obj, StorageSyncManager, AbstractAPKStorage
+from mapadroid.madmin.madmin import madmin
+from mapadroid.utils.pluginBase import PluginCollection
 import unittest
+from mapadroid.utils.logging import initLogging, get_logger, LoggerEnums
+
 
 args = parseArgs()
 os.environ['LANGUAGE'] = args.language
 initLogging(args)
+logger = get_logger(LoggerEnums.database)
 
 
 # Patch to make exceptions in threads cause an exception.
@@ -116,8 +118,8 @@ def get_system_infos(db_wrapper):
 
         memoryUse = py.memory_info()[0] / 2. ** 30
         cpuUse = py.cpu_percent()
-        logger.info('Instance Name: "{}" - Memory usage: {} - CPU usage: {}',
-                    str(args.status_name), str(memoryUse), str(cpuUse))
+        logger.info('Instance name: "{}" - Memory usage: {:.3f} GB - CPU usage: {}',
+                    str(args.status_name), memoryUse, str(cpuUse))
         collected = None
         if args.stat_gc:
             collected = gc.collect()
@@ -149,11 +151,41 @@ def check_dependencies():
 
 
 if __name__ == "__main__":
+    data_manager: DataManager = None
+    device_Updater: deviceUpdater = None
+    event: Event = None
+    jobstatus: dict = {}
+    mapping_manager_manager: MappingManagerManager = None
+    mapping_manager: Optional[MappingManager] = None
+    mitm_receiver_process: MITMReceiver = None
+    mitm_mapper_manager: Optional[MitmMapperManager] = None
+    mitm_mapper: Optional[MitmMapper] = None
+    pogoWindowManager: Optional[PogoWindows] = None
+    storage_elem: Optional[AbstractAPKStorage] = None
+    storage_manager: Optional[StorageSyncManager] = None
+    t_whw: Thread = None # Thread for WebHooks
+    t_ws: Thread = None # Thread - WebSocket Server
+    webhook_worker: Optional[WebhookWorker] = None
+    ws_server: WebsocketServer = None
+    if args.config_mode:
+        logger.info('Starting MAD in config mode')
+    else:
+        logger.info('Starting MAD')
     check_dependencies()
-
     # TODO: globally destroy all threads upon sys.exit() for example
     install_thread_excepthook()
-
+    create_folder(args.file_path)
+    create_folder(args.upload_path)
+    create_folder(args.temp_path)
+    if args.config_mode and args.only_routes:
+        logger.error('Unable to run with config_mode and only_routes.  Only use one option')
+        sys.exit(1)
+    if not args.only_scan and not args.only_routes:
+        logger.error("No runmode selected. \nAllowed modes:\n"
+                     " -os    ---- start scanner/devicecontroller\n"
+                     " -or    ---- only calculate routes")
+        sys.exit(1)
+    # Elements that should initialized regardless of the functionality being used
     db_wrapper, db_pool_manager = DbFactory.get_wrapper(args)
     try:
         instance_id = db_wrapper.get_instance_id()
@@ -162,116 +194,106 @@ if __name__ == "__main__":
     data_manager = DataManager(db_wrapper, instance_id)
     MADPatcher(args, data_manager)
     data_manager.clear_on_boot()
-
-    # create folders
-    create_folder(args.file_path)
-    create_folder(args.upload_path)
-
-    if not args.only_scan and not args.only_routes:
-        logger.error("No runmode selected. \nAllowed modes:\n"
-                     " -os    ---- start scanner/devicecontroller\n"
-                     " -or    ---- only calculate routes")
-        sys.exit(1)
-
-    mitm_receiver_process = None
-    mitm_mapper_manager = None
-
-    mapping_manager_manager = None
-    mapping_manager: Optional[MappingManager] = None
-    pogoWindowManager = None
-    ws_server = None
-    t_ws = None
-    t_file_watcher = None
-    t_whw = None
-    device_Updater = None
-
-    if args.only_scan or args.only_routes:
-        MappingManagerManager.register('MappingManager', MappingManager)
-        mapping_manager_manager = MappingManagerManager()
-        mapping_manager_manager.start()
-        mapping_manager: MappingManager = mapping_manager_manager.MappingManager(db_wrapper, args,
-                                                                                 data_manager,
-                                                                                 False)
-        filename = args.mappings
-        if args.only_routes:
-            recalc_in_progress = True
-            while recalc_in_progress:
-                time.sleep(5)
-                sql = "SELECT COUNT(*) > 0 FROM `settings_routecalc` WHERE `recalc_status` = 1"
-                recalc_in_progress = db_wrapper.autofetch_value(sql)
-            logger.info("Done calculating routes!")
-            # TODO: shutdown managers properly...
-            sys.exit(0)
-
-        event = Event(args, db_wrapper)
-        event.start_event_checker()
-        # Do not remove this sleep unless you have solved the race condition on boot with the logger
-        time.sleep(.1)
-
-        jobstatus: dict = {}
+    data_manager.fix_routecalc_on_boot()
+    event = Event(args, db_wrapper)
+    event.start_event_checker()
+    # Do not remove this sleep unless you have solved the race condition on boot with the logger
+    time.sleep(.1)
+    MappingManagerManager.register('MappingManager', MappingManager)
+    mapping_manager_manager = MappingManagerManager()
+    mapping_manager_manager.start()
+    mapping_manager: MappingManager = mapping_manager_manager.MappingManager(db_wrapper,
+                                                                             args,
+                                                                             data_manager,
+                                                                             configmode=args.config_mode)
+    if args.only_routes:
+        logger.info('Running in route recalculation mode.  MAD will exit once complete')
+        recalc_in_progress = True
+        while recalc_in_progress:
+            time.sleep(5)
+            sql = "SELECT COUNT(*) > 0 FROM `settings_routecalc` WHERE `recalc_status` = 1"
+            recalc_in_progress = db_wrapper.autofetch_value(sql)
+        logger.info("Done calculating routes!")
+        # TODO: shutdown managers properly...
+        sys.exit(0)
+    (storage_manager, storage_elem) = get_storage_obj(args, db_wrapper)
+    if not args.config_mode:
+        pogoWindowManager = PogoWindows(args.temp_path, args.ocr_thread_count)
         MitmMapperManager.register('MitmMapper', MitmMapper)
         mitm_mapper_manager = MitmMapperManager()
         mitm_mapper_manager.start()
-        mitm_mapper: MitmMapper = mitm_mapper_manager.MitmMapper(mapping_manager, db_wrapper.stats_submit)
-
-        from mapadroid.ocr.pogoWindows import PogoWindows
-
-        pogoWindowManager = PogoWindows(args.temp_path, args.ocr_thread_count)
-
-        mitm_receiver_process = MITMReceiver(args.mitmreceiver_ip, int(args.mitmreceiver_port),
-                                             mitm_mapper, args, mapping_manager, db_wrapper,
-                                             data_manager)
-        mitm_receiver_process.start()
-
-        logger.info('Starting websocket server on port {}'.format(str(args.ws_port)))
-        ws_server = WebsocketServer(args, mitm_mapper, db_wrapper, mapping_manager, pogoWindowManager,
-                                    data_manager, event=event)
-        t_ws = Thread(name='scanner', target=ws_server.start_server)
-        t_ws.daemon = False
-        t_ws.start()
-
-        # init jobprocessor
-        device_Updater = deviceUpdater(ws_server, args, jobstatus, db_wrapper)
-
-        webhook_worker = None
+        mitm_mapper = mitm_mapper_manager.MitmMapper(mapping_manager, db_wrapper.stats_submit)
+    logger.info('Starting PogoDroid Receiver server on port {}'.format(str(args.mitmreceiver_port)))
+    mitm_receiver_process = MITMReceiver(args.mitmreceiver_ip, int(args.mitmreceiver_port),
+                                         mitm_mapper, args, mapping_manager, db_wrapper,
+                                         data_manager,
+                                         storage_elem,
+                                         enable_configmode=args.config_mode)
+    mitm_receiver_process.start()
+    logger.info('Starting websocket server on port {}'.format(str(args.ws_port)))
+    ws_server = WebsocketServer(args=args,
+                                mitm_mapper=mitm_mapper,
+                                db_wrapper=db_wrapper,
+                                mapping_manager=mapping_manager,
+                                pogo_window_manager=pogoWindowManager,
+                                data_manager=data_manager,
+                                event=event,
+                                enable_configmode=args.config_mode)
+    t_ws = Thread(name='system', target=ws_server.start_server)
+    t_ws.daemon = False
+    t_ws.start()
+    device_Updater = deviceUpdater(ws_server, args, jobstatus, db_wrapper, storage_elem)
+    if not args.config_mode:
         if args.webhook:
-            from mapadroid.webhook.webhookworker import WebhookWorker
-
             rarity = Rarity(args, db_wrapper)
             rarity.start_dynamic_rarity()
-
             webhook_worker = WebhookWorker(
                 args, data_manager, mapping_manager, rarity, db_wrapper.webhook_reader)
-            t_whw = Thread(name="webhook_worker",
+            t_whw = Thread(name="system",
                            target=webhook_worker.run_worker)
             t_whw.daemon = True
             t_whw.start()
-
-    if args.statistic:
-        if args.only_scan:
+        if args.statistic:
             logger.info("Starting statistics collector")
             t_usage = Thread(name='system',
                              target=get_system_infos, args=(db_wrapper,))
             t_usage.daemon = True
             t_usage.start()
 
-    if args.with_madmin:
-        from mapadroid.madmin.madmin import madmin_start
+    madmin = madmin(args, db_wrapper, ws_server, mapping_manager, data_manager, device_Updater,
+                          jobstatus, storage_elem)
 
+    # starting plugin system
+    plugin_parts={'db_wrapper': db_wrapper, 'args': args, 'madmin': madmin, 'data_manager': data_manager,
+                  'mapping_manager': mapping_manager, 'jobstatus': jobstatus, 'device_Updater': device_Updater,
+                  'ws_server': ws_server, 'webhook_worker': webhook_worker,
+                  'mitm_receiver_process': mitm_receiver_process, 'mitm_mapper': mitm_mapper, 'event': event,
+                  'logger': logger, 'storage_elem': storage_elem
+                  }
+    mad_plugins = PluginCollection('plugins', plugin_parts)
+    mad_plugins.apply_all_plugins_on_value()
+
+    if args.with_madmin or args.config_mode:
         logger.info("Starting Madmin on port {}", str(args.madmin_port))
-        t_madmin = Thread(name="madmin", target=madmin_start,
-                          args=(args, db_wrapper, ws_server, mapping_manager, data_manager, device_Updater,
-                                jobstatus))
+        t_madmin = Thread(name="madmin", target=madmin.madmin_start)
         t_madmin.daemon = True
         t_madmin.start()
 
-    logger.info("Running.....")
+    logger.info("MAD is now running.....")
     exit_code = 0
+    device_creator = None
     try:
         if args.unit_tests:
+            from mapadroid.tests.local_api import LocalAPI
             api_ready = False
             api = LocalAPI()
             logger.info('Checking API status')
+            if not data_manager.get_root_resource('device').keys():
+                from mapadroid.tests.test_utils import ResourceCreator
+                logger.info('Creating a device')
+                device_creator = ResourceCreator(api, prefix='MADCore')
+                res = device_creator.create_valid_resource('device')[0]
+                mapping_manager.update()
             while not api_ready:
                 try:
                     api.get('/api')
@@ -295,6 +317,8 @@ if __name__ == "__main__":
         try:
             db_wrapper = None
             logger.success("Stop called")
+            if device_creator:
+                device_creator.remove_resources()
             terminate_mad.set()
             # now cleanup all threads...
             # TODO: check against args or init variables to None...
@@ -322,6 +346,9 @@ if __name__ == "__main__":
             if mitm_mapper_manager is not None:
                 logger.debug("Calling mitm_mapper shutdown")
                 mitm_mapper_manager.shutdown()
+            if storage_manager is not None:
+                logger.debug('Stopping storage manager')
+                storage_manager.shutdown()
             if db_pool_manager is not None:
                 logger.debug("Calling db_pool_manager shutdown")
                 db_pool_manager.shutdown()

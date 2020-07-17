@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
-
 from mapadroid.db.PooledQueryExecutor import PooledQueryExecutor
-from mapadroid.utils.logging import logger
+from mapadroid.utils.logging import get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.database)
 
 
 class DbWebhookReader:
@@ -14,7 +16,7 @@ class DbWebhookReader:
         self._db_wrapper = db_wrapper  # type: db.DbWrapper
 
     def get_raids_changed_since(self, timestamp):
-        logger.debug("DbWebhookReader::get_raids_changed_since called")
+        logger.debug2("DbWebhookReader::get_raids_changed_since called")
         query = (
             "SELECT raid.gym_id, raid.level, raid.spawn, raid.start, raid.end, raid.pokemon_id, "
             "raid.cp, raid.move_1, raid.move_2, raid.last_scanned, raid.form, raid.is_exclusive, raid.gender, "
@@ -59,7 +61,7 @@ class DbWebhookReader:
         return ret
 
     def get_weather_changed_since(self, timestamp):
-        logger.debug("DbWebhookReader::get_weather_changed_since called")
+        logger.debug2("DbWebhookReader::get_weather_changed_since called")
         query = (
             "SELECT * "
             "FROM weather "
@@ -91,11 +93,11 @@ class DbWebhookReader:
         return ret
 
     def get_quests_changed_since(self, timestamp):
-        logger.debug("DbWebhookReader::get_quests_changed_since called")
+        logger.debug2("DbWebhookReader::get_quests_changed_since called")
         return self._db_wrapper.quests_from_db(timestamp=timestamp)
 
     def get_gyms_changed_since(self, timestamp):
-        logger.debug("DbWebhookReader::get_gyms_changed_since called")
+        logger.debug2("DbWebhookReader::get_gyms_changed_since called")
         query = (
             "SELECT name, description, url, gym.gym_id, team_id, guard_pokemon_id, slots_available, "
             "latitude, longitude, total_cp, is_in_battle, weather_boosted_condition, "
@@ -131,7 +133,7 @@ class DbWebhookReader:
         return ret
 
     def get_stops_changed_since(self, timestamp):
-        logger.debug("DbWebhookReader::get_stops_changed_since called")
+        logger.debug2("DbWebhookReader::get_stops_changed_since called")
         query = (
             "SELECT pokestop_id, latitude, longitude, lure_expiration, name, image, active_fort_modifier, "
             "last_modified, last_updated, incident_start, incident_expiration, incident_grunt_type "
@@ -167,12 +169,12 @@ class DbWebhookReader:
         return ret
 
     def get_mon_changed_since(self, timestamp):
-        logger.debug("DbWebhookReader::get_mon_changed_since called")
+        logger.debug2("DbWebhookReader::get_mon_changed_since called")
         query = (
             "SELECT encounter_id, spawnpoint_id, pokemon_id, pokemon.latitude, pokemon.longitude, "
             "disappear_time, individual_attack, individual_defense, individual_stamina, "
             "move_1, move_2, cp, cp_multiplier, weight, height, gender, form, costume, "
-            "weather_boosted_condition, last_modified, "
+            "weather_boosted_condition, last_modified, catch_prob_1, catch_prob_2, catch_prob_3, "
             "(trs_spawn.calc_endminsec IS NOT NULL) AS verified "
             "FROM pokemon "
             "INNER JOIN trs_spawn ON pokemon.spawnpoint_id = trs_spawn.spawnpoint "
@@ -186,7 +188,8 @@ class DbWebhookReader:
              longitude, disappear_time, individual_attack,
              individual_defense, individual_stamina, move_1, move_2,
              cp, cp_multiplier, weight, height, gender, form, costume,
-             weather_boosted_condition, last_modified, verified) in res:
+             weather_boosted_condition, last_modified, catch_prob_1, catch_prob_2, catch_prob_3,
+             verified) in res:
             ret.append({
                 "encounter_id": encounter_id,
                 "pokemon_id": pokemon_id,
@@ -208,6 +211,9 @@ class DbWebhookReader:
                 "height": height,
                 "weight": weight,
                 "weather_boosted_condition": weather_boosted_condition,
+                "base_catch": catch_prob_1,
+                "great_catch": catch_prob_2,
+                "ultra_catch": catch_prob_3,
                 "spawn_verified": verified == 1
             })
         return ret

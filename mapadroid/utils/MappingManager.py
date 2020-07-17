@@ -6,21 +6,23 @@ from multiprocessing.pool import ThreadPool
 from queue import Empty, Queue
 from threading import Thread
 from typing import Optional, List, Dict, Tuple, Set
-
 from mapadroid.db.DbWrapper import DbWrapper
 from mapadroid.geofence.geofenceHelper import GeofenceHelper
 from mapadroid.route import RouteManagerIV, RouteManagerBase
 from mapadroid.route.RouteManagerFactory import RouteManagerFactory
 from mapadroid.utils.collections import Location
-from mapadroid.utils.logging import logger
 from mapadroid.utils.s2Helper import S2Helper
 from mapadroid.worker.WorkerType import WorkerType
+from mapadroid.utils.logging import get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.utils)
 
 mode_mapping = {
     "raids_mitm": {
         "s2_cell_level": 15,
         "range": 490,
-        "range_init": 490,
+        "range_init": 980,
         "max_count": 100000
     },
     "mon_mitm": {
@@ -32,7 +34,7 @@ mode_mapping = {
     "pokestops": {
         "s2_cell_level": 13,
         "range": 0.001,
-        "range_init": 490,
+        "range_init": 980,
         "max_count": 100000
     },
     "iv_mitm": {
@@ -48,8 +50,7 @@ class JoinQueue(object):
         self._joinqueue: Queue = Queue()
         self.__shutdown_event = stop_trigger
         self._mapping_mananger = mapping_manager
-        self.__route_join_thread: Thread = Thread(name='route_joiner',
-                                                  target=self.__route_join, )
+        self.__route_join_thread: Thread = Thread(name='system', target=self.__route_join)
         self.__route_join_thread.daemon = True
         self.__route_join_thread.start()
 
@@ -66,7 +67,7 @@ class JoinQueue(object):
                 return
 
             if routejoin is not None:
-                logger.info("Try to join routethreads for route {}".format(str(routejoin)))
+                logger.info("Try to join routethreads for route {}", routejoin)
                 self._mapping_mananger.routemanager_join(routejoin)
 
     def set_queue(self, item):
@@ -98,7 +99,7 @@ class MappingManager:
         self.update(full_lock=True)
 
         self.__devicesettings_setter_queue: Queue = Queue()
-        self.__devicesettings_setter_consumer_thread: Thread = Thread(name='devicesettings_setter_consumer',
+        self.__devicesettings_setter_consumer_thread: Thread = Thread(name='system',
                                                                       target=self.__devicesettings_setter_consumer, )
         self.__devicesettings_setter_consumer_thread.daemon = True
         self.__devicesettings_setter_consumer_thread.start()
@@ -147,17 +148,15 @@ class MappingManager:
 
     def get_monlist(self, listname, areaname):
         if type(listname) is list:
-            logger.error(
-                'Area {} is using old list format instead of global mon list. Please check your mappings.json.'
-                ' Using empty list instead.'.format(str(areaname)))
+            logger.error('Area {} is using old list format instead of global mon list. Please check your mappings.json.'
+                ' Using empty list instead.', areaname)
             return []
         if listname is not None and int(listname) in self._monlists:
             return self._monlists[int(listname)]
         elif listname is None:
             return []
         else:
-            logger.warning(
-                "IV list '{}' has been used in area '{}' but does not exist. Using empty IV list instead.",
+            logger.warning("IV list '{}' has been used in area '{}' but does not exist. Using empty IV list instead.",
                 listname, areaname)
             return []
 
@@ -323,7 +322,10 @@ class MappingManager:
                 'num_procs': 0,
                 'active': active
             }
-            t = Thread(target=routemanager.recalc_route_adhoc, args=args, kwargs=kwargs)
+            t = Thread(name=routemanager.name,
+                       target=routemanager.recalc_route_adhoc,
+                       args=args,
+                       kwargs=kwargs)
             t.start()
         except Exception as e:
             import traceback
@@ -359,8 +361,7 @@ class MappingManager:
                 geofence_included = self.__data_manager.get_resource('geofence',
                                                                      identifier=area["geofence_included"])
             except:
-                raise RuntimeError(
-                    "geofence_included for area '{}' is specified but does not exist ('{}').".format(
+                raise RuntimeError("geofence_included for area '{}' is specified but does not exist ('{}').".format(
                         area["name"], geofence_included
                     )
                 )
@@ -401,6 +402,7 @@ class MappingManager:
                     self.get_monlist(area['settings'].get('mon_ids_iv', None), area.get("name", "unknown"))
             route_resource = self.__data_manager.get_resource('routecalc', identifier=area["routecalc"])
 
+            calc_type: str = area.get("route_calc_algorithm", "route")
             route_manager = RouteManagerFactory.get_routemanager(self.__db_wrapper, self.__data_manager,
                                                                  area_id, None,
                                                                  mode_mapping.get(mode, {}).get("range", 0),
@@ -416,27 +418,25 @@ class MappingManager:
                                                                  coords_spawns_known=area.get(
                                                                      "coords_spawns_known", False),
                                                                  routefile=route_resource,
-                                                                 calctype=area.get("route_calc_algorithm",
-                                                                                   "optimized"),
+                                                                 calctype=calc_type,
                                                                  joinqueue=self.join_routes_queue,
                                                                  S2level=mode_mapping.get(mode, {}).get(
                                                                      "s2_cell_level", 30),
-                                                                 include_event_id=
-                                                                 area.get("settings", {}).get("include_event_id", None)
+                                                                 include_event_id=area.get(
+                                                                     "settings", {}).get("include_event_id", None)
                                                                  )
             logger.info("Initializing area {}", area["name"])
-            if mode not in ("iv_mitm", "idle") and area.get("route_calc_algorithm", "optimized") not in "routefree":
+            if mode not in ("iv_mitm", "idle") and calc_type != "routefree":
                 coords = self.__fetch_coords(mode, geofence_helper,
                                              coords_spawns_known=area.get("coords_spawns_known", False),
                                              init=area.get("init", False),
-                                             range_init=mode_mapping.get(area_true.area_type, {}).get(
-                                                 "range_init", 630),
+                                             range_init=mode_mapping.get(mode, {}).get("range_init", 630),
                                              including_stops=area.get("including_stops", False),
                                              include_event_id=area.get("settings", {}).get("include_event_id", None))
 
                 route_manager.add_coords_list(coords)
-                max_radius = mode_mapping[area_true.area_type]["range"]
-                max_count_in_radius = mode_mapping[area_true.area_type]["max_count"]
+                max_radius = mode_mapping[mode]["range"]
+                max_count_in_radius = mode_mapping[mode]["max_count"]
                 if not area.get("init", False):
 
                     proc = thread_pool.apply_async(route_manager.initial_calculation,
@@ -444,8 +444,7 @@ class MappingManager:
                                                          0, False))
                     areas_procs[area_id] = proc
                 else:
-                    logger.info(
-                        "Init mode enabled. Going row-based for {}", str(area.get("name", "unknown")))
+                    logger.info("Init mode enabled. Going row-based for {}", area.get("name", "unknown"))
                     # we are in init, let's write the init route to file to make it visible in madmin
                     calc_coords = []
                     if area["routecalc"] is not None:
@@ -535,7 +534,7 @@ class MappingManager:
             elif mode == "pokestops":
                 coords = self.__db_wrapper.stops_from_db(geofence_helper)
             else:
-                logger.error("Mode not implemented yet: {}", str(mode))
+                logger.error("Mode not implemented yet: {}", mode)
                 exit(1)
         else:
             # calculate all level N cells (mapping back from mapping above linked to mode)
@@ -619,7 +618,7 @@ class MappingManager:
                     devicemappings_tmp[dev]['settings']["account_rotation_started"] = \
                         self._devicemappings[dev]['settings']["account_rotation_started"]
 
-            logger.info("Acquiring lock to update mappings")
+            logger.debug("Acquiring lock to update mappings")
             with self.__mappings_mutex:
                 self._areas = areas_tmp
                 self._devicemappings = devicemappings_tmp
@@ -627,7 +626,7 @@ class MappingManager:
                 self._auths = auths_tmp
 
         else:
-            logger.info("Acquiring lock to update mappings,full")
+            logger.debug("Acquiring lock to update mappings,full")
             with self.__mappings_mutex:
                 self._monlists = self.__get_latest_monlists()
                 self._routemanagers = self.__get_latest_routemanagers()

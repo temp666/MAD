@@ -49,8 +49,9 @@ $(document).on("hidden.bs.modal", "#injectionModal", function (e) {
 });
 
 $(document).on("click", "#sendworker", function () {
-    var location = $(this).data("loc");
-    $('#injectionModal').data('coords', location).modal();
+    var location = $(this).attr("data-loc");
+    $('#injectLocation').val(location);
+    $('#injectionModal').modal();
 });
 
 L.Marker.addInitHook(function () {
@@ -457,7 +458,7 @@ new Vue({
                             weight: 2,
                             opacity: 1.0,
                             fillOpacity: 0.8,
-                        }).bindPopup($this.build_gym_popup, {'className': 'gympopup'});
+                        }).bindPopup($this.build_gym_popup, {'className': 'gympopup', autoPan: false});
 
                         $this.addMouseEventPopup(leaflet_data["gyms"][gym["id"]]);
 
@@ -709,7 +710,6 @@ new Vue({
 
                     // add route to layergroup
                     L.geoJSON(geojson, {
-                        //pane: "routes",
                         style: {
                             "color": "#000000",
                             "weight": 2,
@@ -1321,7 +1321,7 @@ new Vue({
          <div class="timestamp"><i class="fa fa-clock"></i> Scanned: ${last_scanned.format(timeformat)}</div>
          ${raidContent}
          <br>
-         <button id="sendworker" class="btn btn-outline-secondary btn-sm" data-loc="${gym["latitude"]},${gym["longitude"]}"><i class="fas fa-satellite-dish"></i> Send worker here</button>
+         <button id="sendworker" class="btn btn-outline-secondary btn-sm" data-loc="${gym["lat"]},${gym["lon"]}"><i class="fas fa-satellite-dish"></i> Send worker here</button>
         </div>`;
         },
         build_spawn_popup(marker) {
@@ -1436,7 +1436,7 @@ new Vue({
           ${ivtext}
         <div class="end"><i class="fas fa-hourglass-end"></i> Despawn: <strong>${end.format("YYYY-MM-DD HH:mm:ss")} (${end.from(moment())})</strong></div>
         <br>
-        <button id="sendworker" class="btn btn-outline-secondary btn-sm" data-loc="${mon["latitude"]},${mon["longitude"]}"><i class="fas fa-satellite-dish"></i> Send worker here</button>
+        <button id="sendworker" class="btn btn-outline-secondary btn-sm" data-loc="${mon["latitude"].toFixed(6)},${mon["longitude"].toFixed(6)}"><i class="fas fa-satellite-dish"></i> Send worker here</button>
         <div class="monImg" style="background-image: url(${image}); background-size: 100%"></div>
         </div>
       `;
@@ -1516,6 +1516,10 @@ new Vue({
             }
         },
         addMouseEventPopup(marker) {
+            if (L.Browser.touch) {
+              return;
+            }
+
             marker.on("mouseover", function (e) {
                 marker.keepPopupOpen = false;
                 marker.openPopup();

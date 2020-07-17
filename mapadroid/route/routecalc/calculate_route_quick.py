@@ -1,17 +1,19 @@
 import numpy as np
-
-from mapadroid.utils.logging import logger
-
 from .util import *
+from mapadroid.utils.logging import get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.routemanager)
 
 
 def route_calc_impl(coords, route_name, num_processes=1):
-    less_coords_array = []
-    for i in range(len(coords)):
-        less_coords_array.append([coords[i][0].item(), coords[i][1].item()])
+    with logger.contextualize(origin=route_name):
+        less_coords_array = []
+        for i in range(len(coords)):
+            less_coords_array.append([coords[i][0].item(), coords[i][1].item()])
 
-    length, path = tsp(less_coords_array)
-    logger.info("Found {} long solution: ", length)
+        length, path = tsp(less_coords_array)
+        logger.info("Found {} long solution: ", length)
 
     return path
 
@@ -26,11 +28,11 @@ def tsp(data):
     min_span_tree = minimum_spanning_tree(graph_data)
 
     # find odd vertexes
-    logger.info("Finidng odd vertexes...")
+    logger.info("Finding odd vertexes...")
     odd_vertexes = find_odd_vertexes(min_span_tree)
 
     # add minimum weight matching edges to MST
-    logger.info("Adding minimum weight mathcing edges to MST...")
+    logger.info("Adding minimum weight matching edges to MST...")
     minimum_weight_matching(min_span_tree, graph_data, odd_vertexes)
 
     # find an eulerian tour

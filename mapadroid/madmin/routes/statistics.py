@@ -1,16 +1,17 @@
 import datetime
 import json
 import time
-
 from flask import (jsonify, render_template, request, redirect, url_for, flash, Response)
-
 from mapadroid.db.DbStatsReader import DbStatsReader
 from mapadroid.db.DbWrapper import DbWrapper
 from mapadroid.madmin.functions import auth_required, generate_coords_from_geofence, get_geofences
-from mapadroid.utils.gamemechanicutil import calculate_mon_level, calculate_iv, get_raid_boss_cp, form_mapper
+from mapadroid.utils.gamemechanicutil import calculate_mon_level, calculate_iv, form_mapper
 from mapadroid.utils.geo import get_distance_of_two_points_in_meters
-from mapadroid.utils.language import i8ln
-from mapadroid.utils.logging import logger
+from mapadroid.utils.language import i8ln, get_mon_name
+from mapadroid.utils.logging import  get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.madmin)
 
 
 class statistics(object):
@@ -25,17 +26,14 @@ class statistics(object):
             self._datetimeformat = '%Y-%m-%d %I:%M:%S %p'
         else:
             self._datetimeformat = '%Y-%m-%d %H:%M:%S'
-        self.add_route()
         self.outdatedays = self._args.outdated_spawnpoints
 
     def add_route(self):
         routes = [
             ("/statistics", self.statistics),
             ("/statistics_mon", self.statistics_mon),
-
             ("/statistics_shiny", self.statistics_shiny),
             ("/get_game_stats_shiny", self.game_stats_shiny_v2),
-
             ("/get_game_stats", self.game_stats),
             ("/get_game_stats_mon", self.game_stats_mon),
             ("/statistics_detection_worker_data", self.statistics_detection_worker_data),
@@ -43,6 +41,7 @@ class statistics(object):
             ("/status", self.status),
             ("/get_status", self.get_status),
             ("/get_spawnpoints_stats", self.get_spawnpoints_stats),
+            ("/get_spawnpoints_stats_summary", self.get_spawnpoints_stats_summary),
             ("/statistics_spawns", self.statistics_spawns),
             ("/shiny_stats", self.statistics_shiny),
             ("/shiny_stats_data", self.shiny_stats_data),
@@ -55,9 +54,31 @@ class statistics(object):
             ("/delete_unfenced_spawns", self.delete_unfenced_spawns),
             ("/delete_status_entry", self.delete_status_entry),
             ("/reset_status_entry", self.reset_status_entry),
+            ("/get_stop_quest_stats", self.get_stop_quest_stats),
+            ("/statistics_stop_quest", self.statistics_stop_quest),
         ]
         for route, view_func in routes:
             self._app.route(route)(view_func)
+
+    def start_modul(self):
+        self.add_route()
+
+    def generate_mon_icon_url(self, id, form=None, costume=None, shiny=False):
+        base_path = 'https://raw.githubusercontent.com/whitewillem/PogoAssets/resized/no_border'
+
+        form_str = '_00'
+        if form is not None and str(form) != '0':
+            form_str = '_' + str(form)
+
+        costume_str = ''
+        if costume is not None and str(costume) != '0':
+            costume_str = '_' + str(costume)
+
+        shiny_str = ''
+        if shiny:
+            shiny_str = '_shiny'
+
+        return "{}/pokemon_icon_{:03d}{}{}{}.png".format(base_path, id, form_str, costume_str, shiny_str)
 
     @auth_required
     def statistics(self):
@@ -87,6 +108,12 @@ class statistics(object):
                                time=self._args.madmin_time,
                                responsive=str(self._args.madmin_noresponsive).lower())
 
+    @auth_required
+    def statistics_stop_quest(self):
+        return render_template('statistics/stop_quest_statistics.html', title="MAD Stop/Quest Statistics",
+                               time=self._args.madmin_time,
+                               responsive=str(self._args.madmin_noresponsive).lower())
+
     @logger.catch
     @auth_required
     def game_stats(self):
@@ -112,19 +139,6 @@ class statistics(object):
             detection_empty.append({'lat': str(dat[1]), 'lng': str(dat[2]), 'worker': str(dat[3]),
                                     'count': str(dat[0]), 'type': str(dat[4]), 'lastscan': str(dat[5]),
                                     'countsuccess': str(dat[6])})
-
-        # Stop
-        stop = []
-        data = self._db_stats_reader.get_stop_quest()
-        for dat in data:
-            stop.append({'label': dat[0], 'data': dat[1]})
-
-        # Quest
-        quest: list = []
-        quest_db = self._db_stats_reader.get_quests_count(1)
-        for ts, count in quest_db:
-            quest_raw = (ts * 1000, count)
-            quest.append(quest_raw)
 
         # Usage
         insta = {}
@@ -175,7 +189,7 @@ class statistics(object):
                 text = 'Instinct'
             gym.append({'label': text, 'data': dat[1], 'color': color})
 
-        stats = {'gym': gym, 'detection_empty': detection_empty, 'quest': quest, 'stop': stop, 'usage': usage,
+        stats = {'gym': gym, 'detection_empty': detection_empty, 'usage': usage,
                  'location_info': location_info, 'detection': detection}
         return jsonify(stats)
 
@@ -212,10 +226,8 @@ class statistics(object):
         data = self._db_stats_reader.get_best_pokemon_spawns()
         if data is not None:
             for dat in data:
-                mon = "%03d" % dat[1]
-                monPic = 'asset/pokemon_icons/pokemon_icon_' + mon + '_00.png'
-                monName_raw = (get_raid_boss_cp(dat[1]))
-                monName = i8ln(monName_raw['name'])
+                monPic = self.generate_mon_icon_url(dat[1], dat[8], dat[9])
+                monName = get_mon_name(dat[1])
                 if self._args.db_method == "rm":
                     lvl = calculate_mon_level(dat[6])
                 else:
@@ -257,12 +269,12 @@ class statistics(object):
             form_suffix = "%02d" % form_mapper(dat[2], dat[5])
             mon = "%03d" % dat[2]
             monPic = 'asset/pokemon_icons/pokemon_icon_' + mon + '_' + form_suffix + '_shiny.png'
-            monName_raw = (get_raid_boss_cp(dat[2]))
-            monName = i8ln(monName_raw['name'])
+            monPic = self.generate_mon_icon_url(dat[2], dat[8], dat[9])
+            monName = get_mon_name(dat[2])
             diff: int = dat[0]
             if diff == 0:
-                logger.warning('No deeper mon stats are possible - not enought data '
-                               '(check config.ini // game_stats_raw)')
+                logger.warning('No deeper pokemon stats are possible - not enough data (check config.ini // '
+                               'game_stats_raw)')
                 diff = 1
 
             ratio = round(dat[1] * 100 / diff, 2)
@@ -290,8 +302,7 @@ class statistics(object):
                 form_suffix = "%02d" % form_mapper(dat, form_dat)
                 mon = "%03d" % dat
                 monPic = 'asset/pokemon_icons/pokemon_icon_' + mon + '_' + form_suffix + '_shiny.png'
-                monName_raw = (get_raid_boss_cp(dat))
-                monName = i8ln(monName_raw['name'])
+                monName = get_mon_name(dat)
 
                 total_shiny_encounters = sum(shiny_avg[dat][form_dat]['total_shiny'])
                 total_nonshiny_encounters = sum(shiny_avg[dat][form_dat]['total_nonshiny'])
@@ -313,16 +324,16 @@ class statistics(object):
     @logger.catch
     @auth_required
     def game_stats_shiny_v2(self):
-        logger.debug('game_stats_shiny_v2')
+        logger.debug2('game_stats_shiny_v2')
         timestamp_from = request.args.get('from', None)
         if (timestamp_from):
             timestamp_from = self.local2utc(int(timestamp_from))
-            logger.debug('using timestamp_from: {}', timestamp_from)
+            logger.debug2('using timestamp_from: {}', timestamp_from)
 
         timestamp_to = request.args.get('to', None)
         if (timestamp_to):
             timestamp_to = self.local2utc(int(timestamp_to))
-            logger.debug('using timestamp_to: {}', timestamp_to)
+            logger.debug2('using timestamp_to: {}', timestamp_to)
 
         tmp_perworker_v2 = {}
         data = self._db_stats_reader.get_shiny_stats_v2(timestamp_from, timestamp_to)
@@ -340,8 +351,7 @@ class statistics(object):
             form_suffix = "%02d" % form_mapper(dat[0], dat[1])
             mon = "%03d" % dat[0]
             monPic = 'asset/pokemon_icons/pokemon_icon_' + mon + '_' + form_suffix + '_shiny.png'
-            monName_raw = (get_raid_boss_cp(dat[0]))
-            monName = i8ln(monName_raw['name'])
+            monName = get_mon_name(dat[0])
             mon_names[dat[0]] = monName
             found_shiny_mon_id.append(
                 mon)  # append everything now, we will set() it later to remove duplicates
@@ -474,8 +484,10 @@ class statistics(object):
 
         # raw detection data
         detections_raw = []
-        data = self._db_stats_reader.get_detection_raw(minutes=minutes, worker=worker)
+        data, data2 = self._db_stats_reader.get_detection_raw(minutes=minutes, worker=worker)
         for dat in data:
+            detections_raw.append({'type': dat[1], 'id': dat[2], 'count': dat[3]})
+        for dat in data2:
             detections_raw.append({'type': dat[1], 'id': dat[2], 'count': dat[3]})
 
         # location raw
@@ -528,6 +540,12 @@ class statistics(object):
     @logger.catch()
     def get_spawnpoints_stats(self):
 
+        geofence_type = request.args.get('type', 'mon_mitm')
+        geofence_id = int(request.args.get('fence', -1))
+        if geofence_type not in ['idle', 'iv_mitm', 'mon_mitm', 'pokestops', 'raids_mitm']:
+            stats = {'spawnpoints': []}
+            return jsonify(stats)
+
         coords = []
         known = {}
         unknown = {}
@@ -535,8 +553,11 @@ class statistics(object):
         events = []
         eventidhelper = {}
 
+        if geofence_id != -1:
+            possible_fences = get_geofences(self._mapping_manager, self._data_manager, area_id_req=geofence_id)
+        else:
+            possible_fences = get_geofences(self._mapping_manager, self._data_manager, fence_type=geofence_type)
 
-        possible_fences = get_geofences(self._mapping_manager, self._data_manager)
         for possible_fence in possible_fences:
             mode = possible_fences[possible_fence]['mode']
             area_id = possible_fences[possible_fence]['area_id']
@@ -593,6 +614,64 @@ class statistics(object):
                 subfenceindex += 1
 
         stats = {'spawnpoints': coords}
+        return jsonify(stats)
+
+    @logger.catch()
+    @auth_required
+    def get_stop_quest_stats(self):
+        stats = []
+        stats_process = []
+        processed_fences = []
+        possible_fences = get_geofences(self._mapping_manager, self._data_manager, fence_type="pokestops")
+        wanted_fences = []
+        if self._args.quest_stats_fences != "":
+            wanted_fences = [item.lower().replace(" ", "") for item in self._args.quest_stats_fences.split(",")]
+        for possible_fence in possible_fences:
+            mode = possible_fences[possible_fence]['mode']
+            area_id = possible_fences[possible_fence]['area_id']
+            subfenceindex: int = 0
+
+            for subfence in possible_fences[possible_fence]['include']:
+                if subfence in processed_fences:
+                    continue
+
+                if len(wanted_fences) > 0:
+                    if str(subfence).lower() not in wanted_fences:
+                        continue
+
+                processed_fences.append(subfence)
+                fence = generate_coords_from_geofence(self._mapping_manager, self._data_manager, subfence)
+
+                stops = len(self._db.stops_from_db(
+                        fence=fence
+                    ))
+                quests = len(self._db.quests_from_db(
+                        fence=fence
+                    ))
+
+                processed: int = 0
+                if int(stops) > 0:
+                    processed: int = int(quests) * 100 / int(stops)
+
+                stats_process.append({"fence": str(subfence), 'stops': int(stops), 'quests': int(quests),
+                              'processed': str(int(processed)) + " %"})
+
+                subfenceindex += 1
+
+        # Quest
+        quest: list = []
+        quest_db = self._db_stats_reader.get_quests_count(1)
+        for ts, count in quest_db:
+            quest_raw = (int(ts * 1000), count)
+            quest.append(quest_raw)
+
+        # Stop
+        stop = []
+        data = self._db_stats_reader.get_stop_quest()
+        for dat in data:
+            stop.append({'label': dat[0], 'data': dat[1]})
+
+        stats = {'stop_quest_stats': stats_process, 'quest': quest, 'stop': stop}
         return jsonify(stats)
 
     @auth_required
@@ -790,4 +869,11 @@ class statistics(object):
 
         return jsonify({'status': 'success'})
 
-
+    @auth_required
+    @logger.catch()
+    def get_spawnpoints_stats_summary(self):
+        possible_fences = get_geofences(self._mapping_manager, self._data_manager)
+        events = self._db.get_events()
+        spawnpoints_total = self._db_stats_reader.get_all_spawnpoints_count()
+        stats = {'fences': possible_fences, 'events': events, 'spawnpoints_count': spawnpoints_total}
+        return jsonify(stats)

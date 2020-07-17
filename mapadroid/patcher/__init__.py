@@ -4,8 +4,11 @@ import json
 import shutil
 import sys
 from mapadroid.db import DbSchemaUpdater
-from mapadroid.utils.logging import logger
 import mysql.connector
+from mapadroid.utils.logging import  get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.patcher)
 
 # OrderedDict containing all required updates with their filename reference.  The dict is stored as (version, filename)
 MAD_UPDATES = OrderedDict([
@@ -31,6 +34,11 @@ MAD_UPDATES = OrderedDict([
     (27, 'patch_27'),
     (28, 'patch_28'),
     (29, 'patch_29'),
+    (30, 'patch_30'),
+    (31, 'trs_status_lastProtoDateTime_fix'),
+    (32, 'reset_routecalc_algo'),
+    (33, 'routecalc_rename'),
+    (34, 'trs_stats_detect_raw_split')
 ])
 
 

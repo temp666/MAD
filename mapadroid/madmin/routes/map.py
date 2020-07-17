@@ -1,9 +1,7 @@
 import json
 from typing import List, Optional
-
 from flask import (jsonify, render_template, request, redirect, url_for)
 from flask_caching import Cache
-
 from mapadroid.db.DbWrapper import DbWrapper
 from mapadroid.madmin.functions import (
     auth_required, getCoordFloat, getBoundParameter, get_geofences, generate_coords_from_geofence
@@ -11,16 +9,17 @@ from mapadroid.madmin.functions import (
 from mapadroid.route.RouteManagerBase import RoutePoolEntry
 from mapadroid.utils import MappingManager
 from mapadroid.utils.collections import Location
-from mapadroid.utils.gamemechanicutil import get_raid_boss_cp
-from mapadroid.utils.language import i8ln
-from mapadroid.utils.logging import logger
+from mapadroid.utils.language import i8ln, get_mon_name
 from mapadroid.utils.questGen import generate_quest
 from mapadroid.utils.s2Helper import S2Helper
+from mapadroid.utils.logging import get_logger, LoggerEnums
 
+
+logger = get_logger(LoggerEnums.madmin)
 cache = Cache(config={'CACHE_TYPE': 'simple'})
 
 
-class map(object):
+class map:
     def __init__(self, db: DbWrapper, args, mapping_manager: MappingManager, app, data_manager):
         self._db: DbWrapper = db
         self._args = args
@@ -34,7 +33,6 @@ class map(object):
         self._data_manager = data_manager
 
         cache.init_app(self._app)
-        self.add_route()
 
     def add_route(self):
         routes = [
@@ -53,6 +51,9 @@ class map(object):
         ]
         for route, view_func in routes:
             self._app.route(route)(view_func)
+
+    def start_modul(self):
+        self.add_route()
 
     @auth_required
     def map(self):
@@ -280,11 +281,11 @@ class map(object):
                 if str(id) in mons_raw:
                     mon_raw = mons_raw[str(id)]
                 else:
-                    mon_raw = get_raid_boss_cp(id)
+                    mon_raw = get_mon_name(id)
                     mons_raw[str(id)] = mon_raw
 
                 data[i]["encounter_id"] = str(data[i]["encounter_id"])
-                data[i]["name"] = i8ln(mon_raw["name"])
+                data[i]["name"] = mon_raw
             except Exception:
                 pass
 

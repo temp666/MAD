@@ -1,6 +1,7 @@
 import math
 import time
 from datetime import datetime
+from typing import Union
 
 from mapadroid.db.DbWrapper import DbWrapper
 from mapadroid.mitm_receiver.MitmMapper import MitmMapper
@@ -11,10 +12,13 @@ from mapadroid.utils.geo import (
     get_distance_of_two_points_in_meters,
     get_lat_lng_offsets_by_distance
 )
-from mapadroid.utils.logging import logger
 from mapadroid.utils.madGlobals import InternalStopWorkerException
 from mapadroid.websocket.AbstractCommunicator import AbstractCommunicator
 from mapadroid.worker.MITMBase import MITMBase, LatestReceivedType
+from mapadroid.utils.logging import get_logger, LoggerEnums
+
+
+logger = get_logger(LoggerEnums.worker)
 
 
 class WorkerMITM(MITMBase):
@@ -26,7 +30,6 @@ class WorkerMITM(MITMBase):
                           routemanager_name=routemanager_name,
                           db_wrapper=db_wrapper, NoOcr=True,
                           mitm_mapper=mitm_mapper, pogoWindowManager=pogo_window_manager, walker=walker, event=event)
-
         # TODO: own InjectionSettings class
         self._injection_settings = {}
         self.__update_injection_settings()
@@ -35,7 +38,7 @@ class WorkerMITM(MITMBase):
         return ["iv_mitm", "raids_mitm", "mon_mitm"]
 
     def _health_check(self):
-        logger.debug("_health_check: called")
+        self.logger.debug4("_health_check: called")
         pass
 
     def _cleanup(self):
@@ -56,7 +59,7 @@ class WorkerMITM(MITMBase):
                                                         float(self.last_location.lng),
                                                         float(self.current_location.lat),
                                                         float(self.current_location.lng))
-        logger.debug('Moving {} meters to the next position', round(distance, 2))
+        self.logger.debug('Moving {} meters to the next position', round(distance, 2))
         if not self._mapping_manager.routemanager_get_init(self._routemanager_name):
             speed = routemanager_settings.get("speed", 0)
             max_distance = routemanager_settings.get("max_distance", None)
@@ -67,7 +70,7 @@ class WorkerMITM(MITMBase):
         if (speed == 0 or
                 (max_distance and 0 < max_distance < distance)
                 or (self.last_location.lat == 0.0 and self.last_location.lng == 0.0)):
-            logger.debug("main: Teleporting...")
+            self.logger.debug("main: Teleporting...")
             self._transporttype = 0
             self._communicator.set_location(
                 Location(self.current_location.lat, self.current_location.lng), 0)
@@ -83,8 +86,7 @@ class WorkerMITM(MITMBase):
                     delay_used = 10
                 elif distance > 2500:
                     delay_used = 8
-                logger.debug(
-                    "Need more sleep after Teleport: {} seconds!", str(delay_used))
+                self.logger.debug("Need more sleep after Teleport: {} seconds!", delay_used)
                 # curTime = math.floor(time.time())  # the time we will take as a starting point to wait for data...
             walk_distance_post_teleport = self.get_devicesettings_value('walk_after_teleport_distance', 0)
             if 0 < walk_distance_post_teleport < distance:
@@ -98,29 +100,29 @@ class WorkerMITM(MITMBase):
                                                                float(
                                                                    self.current_location.lat) + lat_offset,
                                                                float(self.current_location.lng) + lng_offset)
-                logger.info("Walking roughly: {}", str(to_walk))
+                self.logger.info("Walking roughly: {:.2f}m", to_walk)
                 time.sleep(0.3)
                 self._communicator.walk_from_to(self.current_location,
                                                 Location(self.current_location.lat + lat_offset,
                                                          self.current_location.lng + lng_offset),
                                                 11)
-                logger.debug("Walking back")
+                self.logger.debug("Walking back")
                 time.sleep(0.3)
                 self._communicator.walk_from_to(Location(self.current_location.lat + lat_offset,
                                                 self.current_location.lng + lng_offset),
                                                 self.current_location,
                                                 11)
-                logger.debug("Done walking")
+                self.logger.debug("Done walking")
                 time.sleep(1)
         else:
-            logger.info("main: Walking...")
+            self.logger.info("main: Walking...")
             self._transporttype = 1
             self._communicator.walk_from_to(self.last_location, self.current_location, speed)
             # the time we will take as a starting point to wait for data...
             cur_time = math.floor(time.time())
-            logger.debug2("Done walking, fetching time to sleep")
+            self.logger.debug2("Done walking, fetching time to sleep")
             delay_used = self.get_devicesettings_value('post_walk_delay', 7)
-        logger.debug2("Sleeping for {}s".format(str(delay_used)))
+        self.logger.debug2("Sleeping for {}s", delay_used)
         time.sleep(float(delay_used))
         self.set_devicesettings_value("last_location", self.current_location)
         self.last_location = self.current_location
@@ -131,7 +133,7 @@ class WorkerMITM(MITMBase):
         self.__update_injection_settings()
 
     def _pre_work_loop(self):
-        logger.info("MITM worker starting")
+        self.logger.info("MITM worker starting")
         if not self._wait_for_injection() or self._stop_worker_event.is_set():
             raise InternalStopWorkerException
 
@@ -179,7 +181,7 @@ class WorkerMITM(MITMBase):
                 self._mapping_manager.routemanager_get_geofence_helper(self._routemanager_name),
                 self._latest_encounter_update)
             if encounter_ids:
-                logger.debug("Found {} new encounter_ids", len(encounter_ids))
+                self.logger.debug("Found {} new encounter_ids", len(encounter_ids))
             self._encounter_ids = {**encounter_ids, **self._encounter_ids}
             # allow one minute extra life time, because the clock on some devices differs, newer got why this problem
             # apears but it is a fact.
@@ -193,7 +195,7 @@ class WorkerMITM(MITMBase):
             for key in remove:
                 del self._encounter_ids[key]
 
-            logger.debug("Encounter list len: {}", len(self._encounter_ids))
+            self.logger.debug("Encounter list len: {}", len(self._encounter_ids))
             # TODO: here we have the latest update of encountered mons.
             # self._encounter_ids contains the complete dict.
             # encounter_ids only contains the newest update.
@@ -202,14 +204,12 @@ class WorkerMITM(MITMBase):
         self._mitm_mapper.update_latest(origin=self._origin, key="injected_settings", values_dict=injected_settings)
 
     def _wait_data_worker(self, latest, proto_to_wait_for, timestamp):
-        data_requested = LatestReceivedType.UNDEFINED
+        data_requested: Union[LatestReceivedType, dict] = LatestReceivedType.UNDEFINED
         if latest is None:
-            logger.debug(
-                "Nothing received from {} since MAD started", str(self._origin))
+            self.logger.debug("Nothing received from since MAD started")
             time.sleep(0.5)
         elif proto_to_wait_for not in latest:
-            logger.debug(
-                "No data linked to the requested proto since MAD started.")
+            self.logger.debug("No data linked to the requested proto since MAD started.")
             time.sleep(0.5)
         else:
             # proto has previously been received, let's check the timestamp...
@@ -218,11 +218,12 @@ class WorkerMITM(MITMBase):
 
             mode = self._mapping_manager.routemanager_get_mode(self._routemanager_name)
             latest_timestamp = latest_proto.get("timestamp", 0)
-            logger.debug("Latest timestamp: {} vs. timestamp waited for: {}",
-                         datetime.fromtimestamp(latest_timestamp), datetime.fromtimestamp(timestamp))
+            self.logger.debug("Latest timestamp: {} vs. timestamp waited for: {} of proto {}",
+                              datetime.fromtimestamp(latest_timestamp), datetime.fromtimestamp(timestamp),
+                              proto_to_wait_for)
             if latest_timestamp >= timestamp:
                 # TODO: consider reseting timestamp here since we clearly received SOMETHING
-                latest_data = latest_proto.get("values", None)
+                latest_data: dict = latest_proto.get("values", None)
                 if latest_data is None:
                     time.sleep(0.5)
                     return LatestReceivedType.UNDEFINED
@@ -234,33 +235,38 @@ class WorkerMITM(MITMBase):
                             # if there's location in latest, the distance has
                             # already been checked in MITMBase
                             if WP['spawnpoint_id'] and (latest.get("location", None) or
-                                    self._check_data_distance(latest_data['payload']['cells'])):
+                                                        self._check_data_distance(latest_data['payload']['cells'])):
                                 data_requested = latest_data
                                 break
-                        if data_requested == latest_data: break
+                        if data_requested != LatestReceivedType.UNDEFINED:
+                            break
                     if data_requested is None or data_requested == LatestReceivedType.UNDEFINED:
-                        logger.debug("No spawnpoints in data requested")
+                        self.logger.debug("No spawnpoints in data requested")
                         time.sleep(1)
                 elif mode in ["raids_mitm"]:
+                    self.logger.debug("Checking raids_mitm data")
                     for data_extract in latest_data['payload']['cells']:
                         for forts in data_extract['forts']:
                             # if there's location in latest, the distance has
                             # already been checked in MITMBase
                             if forts['id'] and (latest.get("location", None) or
-                                    self._check_data_distance(latest_data['payload']['cells'])):
+                                                self._check_data_distance(latest_data['payload']['cells'])):
+                                self.logger.debug("Got proper fort data for raids")
                                 data_requested = latest_data
                                 break
-                        if data_requested == latest_data: break
-                    if data_requested is None:
-                        logger.debug("No forts in data received")
+                        if data_requested != LatestReceivedType.UNDEFINED:
+                            break
+                    if data_requested is None or data_requested == LatestReceivedType.UNDEFINED:
+                        self.logger.debug("No forts in data received: {}", latest_data)
                         time.sleep(0.5)
+                    else:
+                        self.logger.debug("Got data requested: {}", data_requested)
                 else:
-                    logger.warning(
-                        "No mode specified to wait for - this should not even happen...")
+                    self.logger.warning("No mode specified to wait for - this should not even happen...")
                     time.sleep(0.5)
             else:
-                logger.debug("latest timestamp of proto {} ({}) is older than {}",
-                             str(proto_to_wait_for), str(latest_timestamp), str(timestamp))
+                self.logger.debug("latest timestamp of proto {} ({}) is older than {}", proto_to_wait_for,
+                                  latest_timestamp, timestamp)
                 # TODO: timeout error instead of data_error_counter? Differentiate timeout vs missing data (the
                 # TODO: latter indicates too high speeds for example
                 time.sleep(0.5)

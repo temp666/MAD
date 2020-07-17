@@ -70,9 +70,9 @@ class AreaPokestops(Area):
             "route_calc_algorithm": {
                 "settings": {
                     "type": "option",
-                    "values": ['optimized', 'quick', 'routefree'],
+                    "values": ['route', 'routefree'],
                     "require": False,
-                    "description": "Method of calculation for routes. (Default optimized)",
+                    "description": "Method of calculation for routes. (Default route)",
                     "expected": str
                 }
             }
@@ -101,7 +101,7 @@ class AreaPokestops(Area):
                     "type": "option",
                     "values": [None, True, False],
                     "require": False,
-                    "description": "Do not spin stops that have been spun in the past (for levelmode) (Default: True)",
+                    "description": "Do not spin stops that have been spun in the past (for level mode) (Default: True)",
                     "expected": bool
                 }
             },

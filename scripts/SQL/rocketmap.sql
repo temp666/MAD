@@ -118,7 +118,8 @@ CREATE TABLE `pokemon` (
     KEY `pokemon_pokemon_id` (`pokemon_id`),
     KEY `pokemon_last_modified` (`last_modified`),
     KEY `pokemon_latitude_longitude` (`latitude`,`longitude`),
-    KEY `pokemon_disappear_time_pokemon_id` (`disappear_time`,`pokemon_id`)
+    KEY `pokemon_disappear_time_pokemon_id` (`disappear_time`,`pokemon_id`),
+    KEY `pokemon_individual_attack` (`individual_attack`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `pokestop` (
@@ -282,7 +283,7 @@ CREATE TABLE `settings_area_pokestops` (
     `routecalc` int(10) unsigned NOT NULL,
     `init` tinyint(1) NOT NULL,
     `level` tinyint(1) DEFAULT NULL,
-    `route_calc_algorithm` enum('optimized','quick', 'routefree') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+    `route_calc_algorithm` enum('route', 'routefree') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `speed` float DEFAULT NULL,
     `max_distance` float DEFAULT NULL,
     `ignore_spinned_stops` tinyint(1) DEFAULT NULL,
@@ -371,7 +372,7 @@ CREATE TABLE `settings_device` (
     `screenshot_y_offset` int(11) DEFAULT NULL,
     `screenshot_type` enum('jpeg','png') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `screenshot_quality` int(11) DEFAULT NULL,
-    `route_calc_algorithm` enum('optimized','quick') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+    `route_calc_algorithm` enum('route') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `startcoords_of_walker` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `screendetection` tinyint(1) DEFAULT NULL,
     `logintype` enum('google','ptc') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -382,6 +383,7 @@ CREATE TABLE `settings_device` (
     `rotation_waittime` float DEFAULT NULL,
     `rotate_on_lvl_30` tinyint(1) DEFAULT NULL,
     `injection_thresh_reboot` int(11) DEFAULT NULL,
+    `enhanced_mode_quest` tinyint(1) DEFAULT NULL,
     PRIMARY KEY (`device_id`),
     KEY `settings_device_ibfk_1` (`walker_id`),
     KEY `settings_device_ibfk_2` (`pool_id`),
@@ -420,9 +422,10 @@ CREATE TABLE `settings_devicepool` (
     `screenshot_y_offset` int(11) DEFAULT NULL,
     `screenshot_type` enum('jpeg','png') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `screenshot_quality` int(11) DEFAULT NULL,
-    `route_calc_algorithm` enum('optimized','quick') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+    `route_calc_algorithm` enum('route','routefree') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `startcoords_of_walker` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
     `injection_thresh_reboot` int(11) DEFAULT NULL,
+    `enhanced_mode_quest` tinyint(1) DEFAULT NULL,
     `screendetection` tinyint(1) DEFAULT NULL,
     PRIMARY KEY (`pool_id`),
     KEY `fk_sds_instance` (`instance_id`),

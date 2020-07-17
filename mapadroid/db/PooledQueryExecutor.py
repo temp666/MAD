@@ -1,11 +1,12 @@
 from multiprocessing import Lock, Semaphore
 from multiprocessing.managers import SyncManager
-
 import mysql
+from mysql.connector import ProgrammingError
 from mysql.connector.pooling import MySQLConnectionPool
+from mapadroid.utils.logging import get_logger, LoggerEnums
 
-from mapadroid.utils.logging import logger
 
+logger = get_logger(LoggerEnums.database)
 
 class PooledQuerySyncManager(SyncManager):
     pass
@@ -89,7 +90,7 @@ class PooledQueryExecutor:
                     pass
             else:
                 cursor.execute(sql, args)
-            logger.debug4(cursor.statement)
+            logger.debug3(cursor.statement)
             if commit is True:
                 conn.commit()
                 if not multi:
@@ -107,8 +108,8 @@ class PooledQueryExecutor:
         except mysql.connector.Error as err:
             if not suppress_log:
                 logger.error("Failed executing query: {}, error: {}", str(sql), str(err))
-            logger.debug(sql)
-            logger.debug(args)
+            logger.debug3(sql)
+            logger.debug3(args)
             if raise_exc:
                 raise err
             return None

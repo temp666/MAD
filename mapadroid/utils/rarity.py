@@ -1,8 +1,10 @@
 import time
 from threading import Thread
 from timeit import default_timer
+from mapadroid.utils.logging import get_logger, LoggerEnums
 
-from mapadroid.utils.logging import logger
+
+logger = get_logger(LoggerEnums.utils)
 
 
 class Rarity(object):
@@ -32,8 +34,8 @@ class Rarity(object):
 
     def start_dynamic_rarity(self):
 
-        t = Thread(target=self.dynamic_rarity_refresher,
-                   name='dynamic_rarity')
+        t = Thread(name='system',
+                   target=self.dynamic_rarity_refresher)
         t.daemon = True
         t.start()
 
@@ -48,7 +50,7 @@ class Rarity(object):
 
             start = default_timer()
             db_rarities = self._dbwrapper.get_pokemon_spawns(hours)
-            logger.debug('Pokemon Rarity: {}', str(db_rarities))
+            logger.debug('Pokemon Rarity: {}', db_rarities)
             total = db_rarities['total']
             pokemon = db_rarities['pokemon']
 
@@ -59,10 +61,8 @@ class Rarity(object):
                     total, int(poke[1]))
 
             duration = default_timer() - start
-            logger.info('Updated dynamic rarity. It took {}s for {} entries.', round(
-                duration, 2), total)
-            logger.debug(
-                'Waiting {} minutes before next dynamic rarity update.', refresh_time_sec / 60)
+            logger.info('Updated dynamic rarity. It took {}s for {} entries.', round(duration, 2), total)
+            logger.debug('Waiting {} minutes before next dynamic rarity update.', refresh_time_sec / 60)
             time.sleep(refresh_time_sec)
 
     def rarity_by_id(self, pokemonid):

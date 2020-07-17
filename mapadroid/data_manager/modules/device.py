@@ -1,5 +1,8 @@
 from .resource import Resource
-from mapadroid.utils.logging import logger
+from mapadroid.utils.logging import  get_logger, LoggerEnums, get_origin_logger
+
+
+logger = get_logger(LoggerEnums.data_manager)
 
 
 class Device(Resource):
@@ -318,12 +321,31 @@ class Device(Resource):
                     "description": "Reboot (if enabled) device after not injecting for X times in a row (Default: 20)",
                     "expected": int
                 }
+            },
+            "enhanced_mode_quest": {
+                "settings": {
+                    "type": "option",
+                    "require": False,
+                    "values": [None, False, True],
+                    "description": "Activate enhanced quest mode for this device",
+                    "expected": bool
+                }
+            },
+            "enhanced_mode_quest_safe_items": {
+                "settings": {
+                    "type": "select",
+                    "require": False,
+                    "description": "Undeletable items for enhanced quest mode (Default: 1301, 1401,1402, "
+                                   "1403, 1106, 901, 902, 903, 501, 502, 503, 504, 301)",
+                    "expected": str
+                }
             }
         }
     }
 
     def flush_level(self) -> None:
-        logger.info('Removing visitation status for {}...', self['origin'])
+        origin_logger = get_origin_logger(logger, origin=self['origin'])
+        origin_logger.info('Removing visitation status')
         self._dbc.flush_levelinfo(self['origin'])
 
     def _load(self) -> None:
