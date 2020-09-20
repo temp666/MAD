@@ -15,7 +15,7 @@ from mapadroid.utils.adb import ADBConnect
 from mapadroid.utils.collections import Location
 from mapadroid.utils.functions import (creation_date, generate_phones, image_resize, generate_path)
 from mapadroid.utils.madGlobals import ScreenshotType
-from mapadroid.utils.updater import jobType
+from mapadroid.utils.updater import JobType
 from mapadroid.websocket.WebsocketServer import WebsocketServer
 from mapadroid.utils.logging import get_logger, LoggerEnums, get_origin_logger
 
@@ -23,9 +23,9 @@ from mapadroid.utils.logging import get_logger, LoggerEnums, get_origin_logger
 logger = get_logger(LoggerEnums.madmin)
 
 
-class control(object):
-    def __init__(self, db_wrapper: DbWrapper, args, mapping_manager: MappingManager, websocket: WebsocketServer, logger, app,
-                 deviceUpdater):
+class MADminControl(object):
+    def __init__(self, db_wrapper: DbWrapper, args, mapping_manager: MappingManager, websocket: WebsocketServer, logger,
+                 app, device_updater):
         self._db: DbWrapper = db_wrapper
         self._args = args
         if self._args.madmin_time == "12":
@@ -33,7 +33,7 @@ class control(object):
         else:
             self._datetimeformat = '%Y-%m-%d %H:%M:%S'
         self._adb_connect = ADBConnect(self._args)
-        self._device_updater = deviceUpdater
+        self._device_updater = device_updater
 
         self._mapping_manager: MappingManager = mapping_manager
 
@@ -123,7 +123,7 @@ class control(object):
                 try:
                     os.remove(filename)
                     origin_logger.info("Screenshot {} was corrupted and has been deleted", filename)
-                except:
+                except OSError:
                     pass
 
         for phonename in self._adb_connect.return_adb_devices():
@@ -135,21 +135,16 @@ class control(object):
                         add_text = '<b>ADB - no WS <i class="fa fa-exclamation-triangle"></i></b>'
                         filename = generate_device_screenshot_path(pho, devicemappings, self._args)
                         if os.path.isfile(filename):
-                            image_resize(filename, os.path.join(mapadroid.MAD_ROOT,
-                                self._args.temp_path, "madmin"), width=250)
+                            image_resize(filename, os.path.join(mapadroid.MAD_ROOT, self._args.temp_path, "madmin"),
+                                         width=250)
                             screenshot_ending: str = ".jpg"
                             screen = "screenshot/madmin/screenshot_" + str(pho) + screenshot_ending
-                            screens_phone.append(generate_phones(
-                                pho, add_text, adb_option, screen, filename, self._datetimeformat,
-                                dummy=False)
-                            )
+                            screens_phone.append(generate_phones(pho, add_text, adb_option, screen, filename,
+                                                                 self._datetimeformat, dummy=False))
                         else:
                             screen = "static/dummy.png"
-                            screens_phone.append(
-                                generate_phones(pho, add_text, adb_option, screen, filename,
-                                                self._datetimeformat,
-                                                dummy=True)
-                            )
+                            screens_phone.append(generate_phones(pho, add_text, adb_option, screen, filename,
+                                                                 self._datetimeformat, dummy=True))
 
         return render_template('phonescreens.html', editform=screens_phone, header="Device control",
                                title="Device control")
@@ -166,7 +161,7 @@ class control(object):
         filename = generate_device_screenshot_path(origin, devicemappings, self._args)
 
         if useadb == 'True' and self._adb_connect.make_screenshot(adb, origin, "jpg"):
-            origin_logger.info('MADMin: ADB screenshot successfully')
+            origin_logger.info('MADmin: ADB screenshot successfully')
         else:
             self.generate_screenshot(origin)
 
@@ -210,8 +205,9 @@ class control(object):
         adb = devicemappings.get(origin, {}).get('adb', False)
 
         if useadb == 'True' and self._adb_connect.make_screenclick(adb, origin, real_click_x, real_click_y):
-            origin_logger.info('MADMin: ADB screenclick successfully')
+            origin_logger.info('MADmin: ADB screenclick successfully')
         else:
+            origin_logger.info("MADmin: WS Click x:{}, y:{}", real_click_x, real_click_y)
             temp_comm = self._ws_server.get_origin_communicator(origin)
             temp_comm.click(int(real_click_x), int(real_click_y))
 
@@ -242,13 +238,12 @@ class control(object):
         if useadb == 'True' and self._adb_connect.make_screenswipe(adb, origin, real_click_x,
                                                                    real_click_y, real_click_xe,
                                                                    real_click_ye):
-            origin_logger.info('MADMin: ADB screenswipe successfully')
+            origin_logger.info('MADmin: ADB screenswipe successfully')
         else:
-            origin_logger.info('MADMin WS Swipe x:{} y:{} xe:{} ye:{}', real_click_x, real_click_y, real_click_xe,
+            origin_logger.info('MADmin WS Swipe x:{} y:{} xe:{} ye:{}', real_click_x, real_click_y, real_click_xe,
                                real_click_ye)
             temp_comm = self._ws_server.get_origin_communicator(origin)
-            temp_comm.touch_and_hold(int(real_click_x), int(
-                real_click_y), int(real_click_xe), int(real_click_ye))
+            temp_comm.touch_and_hold(int(real_click_x), int(real_click_y), int(real_click_xe), int(real_click_ye))
 
         time.sleep(2)
         return self.take_screenshot(origin, useadb)
@@ -257,55 +252,53 @@ class control(object):
     def quit_pogo(self):
         origin = request.args.get('origin')
         origin_logger = get_origin_logger(self._logger, origin=origin)
-        useadb = request.args.get('adb')
+        useadb = True if request.args.get('adb') == 'True' else False
         restart = request.args.get('restart')
         devicemappings = self._mapping_manager.get_all_devicemappings()
         adb = devicemappings.get(origin, {}).get('adb', False)
         device_id = devicemappings.get(origin, {}).get('device_id', False)
-        if device_id != False:
+        if device_id is not False:
             self._db.save_last_restart(device_id)
         origin_logger.info('MADmin: Restart Pogo')
-        if useadb == 'True' and \
-                self._adb_connect.send_shell_command(adb, origin, "am force-stop com.nianticlabs.pokemongo"):
-            origin_logger.info('MADMin: ADB shell force-stop game command successfully')
+        if useadb and self._adb_connect.send_shell_command(adb, origin, "am force-stop com.nianticlabs.pokemongo"):
+            origin_logger.info('MADmin: ADB shell force-stop game command successfully')
             if restart:
                 time.sleep(1)
                 started = self._adb_connect.send_shell_command(adb, origin,
                                                                "am start com.nianticlabs.pokemongo")
                 if started:
-                    origin_logger.info('MADMin: ADB shell start game command successfully')
+                    origin_logger.info('MADmin: ADB shell start game command successfully')
                 else:
-                    origin_logger.error('MADMin: ADB shell start game command failed')
+                    origin_logger.error('MADmin: ADB shell start game command failed')
         else:
             temp_comm = self._ws_server.get_origin_communicator(origin)
             if restart:
-                origin_logger.info('MADMin: trying to restart game')
+                origin_logger.info('MADmin: trying to restart game')
                 temp_comm.restart_app("com.nianticlabs.pokemongo")
 
                 time.sleep(1)
             else:
-                origin_logger.info('MADMin: trying to stop game')
+                origin_logger.info('MADmin: trying to stop game')
                 temp_comm.stop_app("com.nianticlabs.pokemongo")
 
-            origin_logger.info('MADMin: WS command successfully')
+            origin_logger.info('MADmin: WS command successfully')
         time.sleep(2)
         return self.take_screenshot(origin, useadb)
 
     @auth_required
     def restart_phone(self):
         origin = request.args.get('origin')
-        useadb = request.args.get('adb')
+        useadb = True if request.args.get('adb') == 'True' else False
         origin_logger = get_origin_logger(self._logger, origin=origin)
         devicemappings = self._mapping_manager.get_all_devicemappings()
         adb = devicemappings.get(origin, {}).get('adb', False)
         device_id = devicemappings.get(origin, {}).get('device_id', False)
-        if device_id != False:
+        if device_id is not False:
             self._db.save_last_reboot(device_id)
         origin_logger.info('MADmin: Restart device')
-        if (useadb == 'True' and
-                self._adb_connect.send_shell_command(
-                    adb, origin, "am broadcast -a android.intent.action.BOOT_COMPLETED")):
-            origin_logger.info('MADMin: ADB shell command successfully')
+        cmd = "am broadcast -a android.intent.action.BOOT_COMPLETED"
+        if (useadb and self._adb_connect.send_shell_command(adb, origin, cmd)):
+            origin_logger.info('MADmin: ADB shell command successfully')
         else:
             temp_comm = self._ws_server.get_origin_communicator(origin)
             temp_comm.reboot()
@@ -322,15 +315,17 @@ class control(object):
     @logger.catch
     def get_logcat(self):
         origin = request.args.get('origin')
-        self._logger.info('MADmin: fetching logcat ({})', str(origin))
+        origin_logger = get_origin_logger(self._logger, origin=origin)
+        origin_logger.info('MADmin: fetching logcat')
 
         filename = generate_device_logcat_zip_path(origin, self._args)
-        self._logger.info("Logcat of {} being stored at {}".format(origin, filename))
+        origin_logger.info("Logcat being stored at {}", filename)
         if self._fetch_logcat_websocket(origin, filename):
             # TODO: send file to user?
-            return send_file(generate_path(filename), as_attachment=True, attachment_filename="logcat_{}.zip".format(origin))
+            return send_file(generate_path(filename), as_attachment=True,
+                             attachment_filename="logcat_{}.zip".format(origin))
         else:
-            self._logger.error("Failed fetching logcat of {}".format(origin))
+            origin_logger.error("Failed fetching logcat")
             # TODO: Return proper error :P
             return None
 
@@ -346,7 +341,7 @@ class control(object):
         if (useadb == 'True' and
                 self._adb_connect.send_shell_command(
                     adb, origin, "pm clear com.nianticlabs.pokemongo")):
-            origin_logger.info('MADMin: ADB shell command successfully')
+            origin_logger.info('MADmin: ADB shell command successfully')
         else:
             temp_comm = self._ws_server.get_origin_communicator(origin)
             temp_comm.reset_app_data("com.nianticlabs.pokemongo")
@@ -391,7 +386,7 @@ class control(object):
             return 'Empty text'
         origin_logger.info('MADmin: Send text')
         if useadb == 'True' and self._adb_connect.send_shell_command(adb, origin, 'input text "' + text + '"'):
-            origin_logger.info('MADMin: Send text successfully')
+            origin_logger.info('MADmin: Send text successfully')
         else:
             temp_comm = self._ws_server.get_origin_communicator(origin)
             temp_comm.enter_text(text)
@@ -424,8 +419,6 @@ class control(object):
             pass
             successfull = True
         origin_logger.info('MADmin: Command "{}" {}', command, successfull)
-
-
         time.sleep(2)
         return self.take_screenshot(origin, useadb)
 
@@ -437,13 +430,13 @@ class control(object):
             if 'file' not in request.files:
                 flash('No file part')
                 return redirect(url_for('upload'), code=302)
-            file = request.files['file']
-            if file.filename == '':
+            uploaded_file = request.files['file']
+            if uploaded_file.filename == '':
                 flash('No file selected for uploading')
                 return redirect(url_for('upload'), code=302)
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                file.save(os.path.join(self._args.upload_path, filename))
+            if uploaded_file and allowed_file(uploaded_file.filename):
+                filename = secure_filename(uploaded_file.filename)
+                uploaded_file.save(os.path.join(self._args.upload_path, filename))
                 flash('File uploaded successfully')
                 return redirect(url_for('uploaded_files'), code=302)
             else:
@@ -493,13 +486,11 @@ class control(object):
                 else:
                     flash('File could not be installed successfully :(')
             else:
-                self._device_updater.preadd_job(origin=origin, job=jobname, id_=int(time.time()),
-                                                type=type_)
+                self._device_updater.preadd_job(origin, jobname, int(time.time()), type_)
                 flash('File successfully queued --> See Job Status')
 
-        elif type_ != jobType.INSTALLATION:
-            self._device_updater.preadd_job(origin=origin, job=jobname, id_=int(time.time()),
-                                            type=type_)
+        elif type_ != JobType.INSTALLATION:
+            self._device_updater.preadd_job(origin, jobname, int(time.time()), type_)
             flash('Job successfully queued --> See Job Status')
 
         return redirect(url_for('uploaded_files', origin=str(origin), adb=useadb), code=302)
@@ -545,15 +536,14 @@ class control(object):
     @logger.catch()
     def install_file_all_devices(self):
         jobname = request.args.get('jobname', None)
-        type_ = request.args.get('type', None)
-        if jobname is None or type_ is None:
+        job_type = request.args.get('type', None)
+        if jobname is None or job_type is None:
             flash('No File or Type selected')
             return redirect(url_for('install_status'), code=302)
 
         devices = self._mapping_manager.get_all_devices()
         for device in devices:
-            self._device_updater.preadd_job(origin=device, job=jobname, id_=int(time.time()),
-                                            type=type_)
+            self._device_updater.preadd_job(device, jobname, int(time.time()), job_type)
             time.sleep(1)
 
         flash('Job successfully queued')
@@ -562,9 +552,9 @@ class control(object):
     @auth_required
     @logger.catch()
     def restart_job(self):
-        id: int = request.args.get('id', None)
-        if id is not None:
-            self._device_updater.restart_job(id)
+        job_id: int = request.args.get('id', None)
+        if job_id is not None:
+            self._device_updater.restart_job(job_id)
             flash('Job requeued')
             return redirect(url_for('install_status'), code=302)
 
@@ -590,11 +580,10 @@ class control(object):
     @auth_required
     def job_for_worker(self):
         jobname = request.args.get('jobname', None)
-        type_ = request.args.get('type', None)
+        job_type = request.args.get('type', None)
         devices = request.args.getlist('device[]')
         for device in devices:
-            self._device_updater.preadd_job(origin=device, job=jobname, id_=int(time.time()),
-                                            type=type_)
+            self._device_updater.preadd_job(device, jobname, int(time.time()), job_type)
             time.sleep(1)
 
         flash('Job successfully queued')

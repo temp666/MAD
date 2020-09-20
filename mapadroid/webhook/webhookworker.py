@@ -35,10 +35,6 @@ class WebhookWorker:
         if self.__args.webhook_start_time != 0:
             self.__last_check = int(self.__args.webhook_start_time)
 
-    def update_settings(self, mapping_manager: MappingManager):
-        self.__build_ivmon_list(mapping_manager)
-        self.__build_excluded_areas(mapping_manager)
-
     def __payload_type_count(self, payload):
         count = {}
 
@@ -60,8 +56,8 @@ class WebhookWorker:
 
         return False
 
-    def __send_webhook(self, payload):
-        if len(payload) == 0:
+    def __send_webhook(self, payloads):
+        if len(payloads) == 0:
             logger.debug2("Payload empty. Skip sending to webhook.")
             return
 
@@ -72,30 +68,30 @@ class WebhookWorker:
         current_wh_num = 1
 
         for webhook in webhooks:
-            payloadToSend = []
-            subTypes = "all"
+            payload_to_send = []
+            sub_types = "all"
             url = webhook.strip()
 
             if url.startswith("["):
-                endIndex = webhook.rindex("]")
-                endIndex += 1
-                subTypes = webhook[:endIndex]
-                url = url[endIndex:]
+                end_index = webhook.rindex("]")
+                end_index += 1
+                sub_types = webhook[:end_index]
+                url = url[end_index:]
 
-                for payloadData in payload:
-                    if payloadData["type"] in subTypes:
-                        payloadToSend.append(payloadData)
+                for payload in payloads:
+                    if payload["type"] in sub_types:
+                        payload_to_send.append(payload)
             else:
-                payloadToSend = payload
+                payload_to_send = payloads
 
-            if len(payloadToSend) == 0:
-                logger.debug2("Payload empty. Skip sending to: {} (Filter: {})", url, subTypes)
+            if len(payload_to_send) == 0:
+                logger.debug2("Payload empty. Skip sending to: {} (Filter: {})", url, sub_types)
                 continue
             else:
-                logger.debug2("Sending to webhook url: {} (Filter: {})", url, subTypes)
+                logger.debug2("Sending to webhook url: {} (Filter: {})", url, sub_types)
 
             payload_list = self.__payload_chunk(
-                payloadToSend, self.__args.webhook_max_payload_size
+                payload_to_send, self.__args.webhook_max_payload_size
             )
 
             current_pl_num = 1
@@ -113,25 +109,20 @@ class WebhookWorker:
 
                     if response.status_code != 200:
                         logger.warning("Got status code other than 200 OK from webhook destination: {}",
-                                     response.status_code)
+                                       response.status_code)
                     else:
                         if webhook_count > 1:
-                            whcount_text = " [wh {}/{}]".format(
-                                current_wh_num, webhook_count
-                            )
+                            whcount_text = " [wh {}/{}]".format(current_wh_num, webhook_count)
                         else:
                             whcount_text = ""
 
                         if len(payload_list) > 1:
-                            whchunk_text = " [pl {}/{}]".format(
-                                current_pl_num, len(payload_list)
-                            )
+                            whchunk_text = " [pl {}/{}]".format(current_pl_num, len(payload_list))
                         else:
                             whchunk_text = ""
 
                         logger.success("Successfully sent payload to webhook{}{}. Stats: {}", whchunk_text,
-                                       whcount_text, json.dumps(self.__payload_type_count(payload_chunk)),
-                        )
+                                       whcount_text, json.dumps(self.__payload_type_count(payload_chunk)))
                 except Exception as e:
                     logger.warning("Exception occured while sending webhook: {}", e)
 
@@ -189,23 +180,26 @@ class WebhookWorker:
         quest_conditions = json.loads(quest["quest_condition"].replace("'", '"'))
         quest_condition = []
         quest_rewards = []
-        a_quest_type = quest["quest_reward_type_raw"]
+        a_quest_reward_type = quest["quest_reward_type_raw"]
         a_quest_reward = {}
         quest_rewards.append(a_quest_reward)
         a_quest_reward["info"] = {}
-        a_quest_reward["type"] = a_quest_type
+        a_quest_reward["type"] = a_quest_reward_type
 
-        if a_quest_type == 2:
+        if a_quest_reward_type == 2:
             a_quest_reward["info"]["item_id"] = quest["item_id"]
             a_quest_reward["info"]["amount"] = int(quest["item_amount"])
-        if a_quest_type == 3:
+        if a_quest_reward_type == 3:
             a_quest_reward["info"]["amount"] = int(quest["item_amount"])
-        if a_quest_type == 7:
+        if a_quest_reward_type == 7:
             a_quest_reward["info"]["pokemon_id"] = int(quest["pokemon_id"])
             a_quest_reward["info"]["pokemon_form"] = int(quest["pokemon_form"])
             a_quest_reward["info"]["pokemon_costume"] = int(quest.get("pokemon_costume", '0'))
             a_quest_reward["info"]["shiny"] = 0
             a_quest_reward["info"]["form"] = int(quest["pokemon_form"])
+        elif a_quest_reward_type == 12:
+            a_quest_reward["info"]["pokemon_id"] = int(quest["pokemon_id"])
+            a_quest_reward["info"]["amount"] = int(quest["item_amount"])
 
         for a_quest_condition in quest_conditions:
             # Quest condition for special type of pokemon.
@@ -299,9 +293,7 @@ class WebhookWorker:
                 continue
 
             # skip ex raid mon if disabled
-            is_exclusive = (
-                    raid["is_exclusive"] is not None and raid["is_exclusive"] != 0
-            )
+            is_exclusive = raid["is_exclusive"] is not None and raid["is_exclusive"] != 0
             if not self.__args.webhook_submit_exraids and is_exclusive:
                 continue
 
@@ -315,6 +307,7 @@ class WebhookWorker:
                 "start": raid["start"],
                 "end": raid["end"],
                 "name": raid["name"],
+                "evolution": raid["evolution"],
             }
 
             if raid["move_1"] is not None:
@@ -339,10 +332,10 @@ class WebhookWorker:
                 raid_payload["form"] = raid["form"]
 
             if raid["is_ex_raid_eligible"] is not None:
-                raid_payload["is_ex_raid_eligible"] = raid["is_ex_raid_eligible"]
+                raid_payload["is_ex_raid_eligible"] = raid["is_ex_raid_eligible"] != 0
 
             if raid["is_exclusive"] is not None:
-                raid_payload["is_exclusive"] = raid["is_exclusive"]
+                raid_payload["is_exclusive"] = raid["is_exclusive"] != 0
 
             if raid["gender"] is not None:
                 raid_payload["gender"] = raid["gender"]
@@ -365,11 +358,9 @@ class WebhookWorker:
             if self.__is_in_excluded_area([mon["latitude"], mon["longitude"]]):
                 continue
 
-            if (
-                    not self.__args.pokemon_webhook_nonivs
-                    and mon["pokemon_id"] in self.__IV_MON
-                    and (mon["individual_attack"] is None)
-            ):
+            if not self.__args.pokemon_webhook_nonivs \
+               and mon["pokemon_id"] in self.__IV_MON \
+               and (mon["individual_attack"] is None):
                 # skipping this mon since IV has not been scanned yet
                 continue
 
@@ -431,10 +422,8 @@ class WebhookWorker:
                 mon_payload["great_catch"] = mon["great_catch"]
                 mon_payload["ultra_catch"] = mon["ultra_catch"]
 
-            if (
-                    mon["weather_boosted_condition"] is not None
-                    and mon["weather_boosted_condition"] > 0
-            ):
+            if mon["weather_boosted_condition"] is not None \
+               and mon["weather_boosted_condition"] > 0:
                 if self.__args.quest_webhook_flavor == "default":
                     mon_payload["boosted_weather"] = mon["weather_boosted_condition"]
                 if self.__args.quest_webhook_flavor == "poracle":

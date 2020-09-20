@@ -1,10 +1,10 @@
 import copy
 import time
 import requests
-from mapadroid.utils.walkerArgs import parseArgs
+from mapadroid.utils.walkerArgs import parse_args
 
 
-mapping_args = parseArgs()
+mapping_args = parse_args()
 
 
 class LocalAPI(requests.Session):
@@ -12,7 +12,7 @@ class LocalAPI(requests.Session):
         super(LocalAPI, self).__init__()
         self.__logger = kwargs.get('logger', None)
         self.__retries = kwargs.get('retries', 1)
-        self.__timeout = kwargs.get('timeout', 1)
+        self.__timeout = kwargs.get('timeout', 3)
         self.__protocol = 'http'  # madmin only runs on http unless behind a proxy so we can force http
         self.__headers = kwargs.get('headers', {})
         self.auth = kwargs.get('auth', None)
@@ -55,16 +55,16 @@ class LocalAPI(requests.Session):
         # Try the send until it finishes or we reach our maximum attempts
         while not finished and attempt < self.__retries:
             try:
-                r = super(LocalAPI, self).send(request, **kwargs)
+                response = super(LocalAPI, self).send(request, **kwargs)
                 if self.__logger:
-                    self.__logger.debug("API Call completed in {}", str(r.elapsed))
-                    self.__logger.debug("Status code: {}", str(r.status_code))
+                    self.__logger.debug("API Call completed in {}", str(response.elapsed))
+                    self.__logger.debug("Status code: {}", str(response.status_code))
                 # If we receive Bad Gateway the call is not completed and should be retried
-                if r.status_code == 502:
+                if response.status_code == 502:
                     if self.__logger:
                         self.__logger.debug("Bad Gateway received.")
                 else:
-                    return r
+                    return response
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as err:
                 if self.__logger:
                     self.__logger.warning(err)

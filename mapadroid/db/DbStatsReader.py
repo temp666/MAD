@@ -16,14 +16,14 @@ class DbStatsReader:
     def get_shiny_stats(self):
         logger.debug3('Fetching shiny pokemon stats from db')
         query = (
-            "SELECT (select count(DISTINCT pokemon.encounter_id) from pokemon inner join trs_stats_detect_mon_raw on "
-            "trs_stats_detect_mon_raw.encounter_id=pokemon.encounter_id where pokemon.pokemon_id=a.pokemon_id and "
-            "trs_stats_detect_mon_raw.worker=b.worker and pokemon.form=a.form), count(DISTINCT a.encounter_id), "
+            "SELECT (select count(DISTINCT pokemon.encounter_id) FROM pokemon INNER JOIN trs_stats_detect_mon_raw ON "
+            "trs_stats_detect_mon_raw.encounter_id=pokemon.encounter_id WHERE pokemon.pokemon_id=a.pokemon_id AND "
+            "trs_stats_detect_mon_raw.worker=b.worker AND pokemon.form=a.form), COUNT(DISTINCT a.encounter_id), "
             "a.pokemon_id, b.worker, GROUP_CONCAT(DISTINCT a.encounter_id "
             "ORDER BY a.encounter_id DESC SEPARATOR '<br>'), a.form, b.timestamp_scan "
-            "FROM pokemon a left join trs_stats_detect_mon_raw b on a.encounter_id=b.encounter_id "
-            "WHERE b.is_shiny=1 group by "
-            "b.is_shiny, a.pokemon_id, a.form, b.worker order by b.timestamp_scan DESC "
+            "FROM pokemon a LEFT JOIN trs_stats_detect_mon_raw b ON a.encounter_id=b.encounter_id "
+            "WHERE b.is_shiny=1 GROUP BY "
+            "b.is_shiny, a.pokemon_id, a.form, b.worker ORDER BY b.timestamp_scan DESC "
         )
         res = self._db_exec.execute(query)
         return res
@@ -79,20 +79,20 @@ class DbStatsReader:
         if worker and not minutes:
             worker_where = ' where worker = \'%s\' ' % str(worker)
         if grouped:
-            grouped_query = ", day(FROM_UNIXTIME(timestamp_scan)), hour(FROM_UNIXTIME(timestamp_scan))"
+            grouped_query = ", day(FROM_UNIXTIME(MIN(timestamp_scan))), hour(FROM_UNIXTIME(MIN(timestamp_scan)))"
         query_where = ''
-        query_date = "unix_timestamp(DATE_FORMAT(from_unixtime(timestamp_scan), '%y-%m-%d %k:00:00'))"
+        query_date = "unix_timestamp(DATE_FORMAT(from_unixtime(MIN(timestamp_scan)), '%y-%m-%d %k:00:00'))"
         if minutes:
             minutes = datetime.now().replace(
                 minute=0, second=0, microsecond=0) - timedelta(minutes=int(minutes))
             query_where = ' where (timestamp_scan) >= unix_timestamp(\'%s\') ' % str(minutes)
 
         query = (
-                "SELECT  %s, worker, sum(mon) as Mon, sum(mon_iv) as MonIV, sum(raid) as Raids, sum(quest) as Quests "
-                "FROM trs_stats_detect %s %s "
-                "GROUP BY worker %s "
-                "ORDER BY timestamp_scan" %
-                (str(query_date), str(query_where), str(worker_where), str(grouped_query))
+            "SELECT  %s, worker, sum(mon) as Mon, sum(mon_iv) as MonIV, sum(raid) as Raids, sum(quest) as Quests "
+            "FROM trs_stats_detect %s %s "
+            "GROUP BY worker %s "
+            "ORDER BY timestamp_scan" %
+            (str(query_date), str(query_where), str(worker_where), str(grouped_query))
         )
         res = self._db_exec.execute(query)
 
@@ -127,11 +127,11 @@ class DbStatsReader:
         query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(period), '%y-%m-%d %k:00:00'))"
 
         query = (
-                "SELECT %s, if(transporttype=0,'Teleport',if(transporttype=1,'Walk', "
-                "'other')), worker, count(fix_ts), avg(data_ts-fix_ts) as data_time, walker from trs_stats_location_raw "
-                "where success=1 and type in (0,1) and (walker='mon_mitm' or walker='iv_mitm' or walker='pokestops') "
-                "%s %s group by worker %s" %
-                (str(query_date), (query_where), str(worker_where), str(grouped_query))
+            "SELECT %s, if(transporttype=0,'Teleport',if(transporttype=1,'Walk', "
+            "'other')), worker, count(fix_ts), avg(data_ts-fix_ts) as data_time, walker from trs_stats_location_raw "
+            "where success=1 and type in (0,1) and (walker='mon_mitm' or walker='iv_mitm' or walker='pokestops') "
+            "%s %s group by worker %s" %
+            (str(query_date), (query_where), str(worker_where), str(grouped_query))
         )
 
         res = self._db_exec.execute(query)
@@ -158,9 +158,9 @@ class DbStatsReader:
         query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(timestamp_scan), '%y-%m-%d %k:00:00'))"
 
         query = (
-                "SELECT %s, worker, sum(location_count), sum(location_ok), sum(location_nok) from trs_stats_location "
-                " %s %s group by worker %s" %
-                (str(query_date), (query_where), str(worker_where), str(grouped_query))
+            "SELECT %s, worker, sum(location_count), sum(location_ok), sum(location_nok) from trs_stats_location "
+            " %s %s group by worker %s" %
+            (str(query_date), (query_where), str(worker_where), str(grouped_query))
         )
         res = self._db_exec.execute(query)
 
@@ -186,10 +186,10 @@ class DbStatsReader:
         query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(period), '%y-%m-%d %k:00:00'))"
 
         query = (
-                "SELECT %s, worker, count(period), if(type=0,if(success=1,'OK-Normal','NOK-Normal'),"
-                "if(success=1,'OK-PrioQ','NOK-PrioQ')) from trs_stats_location_raw "
-                " %s %s and type in(0,1) group by worker %s" %
-                (str(query_date), (query_where), str(worker_where), str(grouped_query))
+            "SELECT %s, worker, count(period), if(type=0,if(success=1,'OK-Normal','NOK-Normal'),"
+            "if(success=1,'OK-PrioQ','NOK-PrioQ')) from trs_stats_location_raw "
+            " %s %s and type in(0,1) group by worker %s" %
+            (str(query_date), (query_where), str(worker_where), str(grouped_query))
         )
 
         res = self._db_exec.execute(query)
@@ -202,7 +202,7 @@ class DbStatsReader:
             "SELECT count(b.id) as Count, b.lat, b.lng, GROUP_CONCAT(DISTINCT b.worker order by worker asc "
             "SEPARATOR ', '), if(b.type=0,'Normal','PrioQ'), max(b.period), (select count(c.id) "
             "from trs_stats_location_raw c where c.lat=b.lat and c.lng=b.lng and c.success=1) as successcount from "
-            "trs_stats_location_raw b where success=0 group by lat, lng HAVING Count > 5 and successcount=0 "
+            "trs_stats_location_raw b where success=0 group by lat, lng, type HAVING Count > 5 and successcount=0 "
             "ORDER BY count(id) DESC"
         )
         res = self._db_exec.execute(query)
@@ -225,12 +225,12 @@ class DbStatsReader:
         query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(timestamp_scan), '%y-%m-%d %k:00:00'))"
 
         query = (
-                "SELECT %s, type, encounter_id as type_id, count FROM trs_stats_detect_mon_raw %s %s order by id asc" %
-                (str(query_date), (query_where), str(worker_where))
+            "SELECT %s, type, encounter_id as type_id, count FROM trs_stats_detect_mon_raw %s %s order by id asc" %
+            (str(query_date), (query_where), str(worker_where))
         )
         query2 = (
-                "SELECT %s, type, guid as type_id, count FROM trs_stats_detect_fort_raw %s %s order by id asc" %
-                (str(query_date), (query_where), str(worker_where))
+            "SELECT %s, type, guid as type_id, count FROM trs_stats_detect_fort_raw %s %s order by id asc" %
+            (str(query_date), (query_where), str(worker_where))
         )
 
         res = self._db_exec.execute(query)
@@ -253,12 +253,13 @@ class DbStatsReader:
 
         query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(period), '%y-%m-%d %k:00:00'))"
 
-        query = ("SELECT %s, lat, lng, if(type=0,'Normal',if(type=1,'PrioQ', if(type=2,'Startup',"
-                 "if(type=3,'Reboot','Restart')))), if(success=1,'OK','NOK'), fix_ts, "
-                 "if(data_ts=0,fix_ts,data_ts), count, if(transporttype=0,'Teleport',if(transporttype=1,'Walk', "
-                 "'other')) from trs_stats_location_raw %s %s order by id asc" %
-                 (str(query_date), (query_where), str(worker_where))
-                 )
+        query = (
+            "SELECT %s, lat, lng, if(type=0,'Normal',if(type=1,'PrioQ', if(type=2,'Startup',"
+            "if(type=3,'Reboot','Restart')))), if(success=1,'OK','NOK'), fix_ts, "
+            "if(data_ts=0,fix_ts,data_ts), count, if(transporttype=0,'Teleport',if(transporttype=1,'Walk', "
+            "'other')) from trs_stats_location_raw %s %s order by id asc" %
+            (str(query_date), (query_where), str(worker_where))
+        )
 
         res = self._db_exec.execute(query)
         return res
@@ -277,18 +278,18 @@ class DbStatsReader:
     def get_pokemon_count(self, minutes):
         logger.debug3('Fetching pokemon spawns count from db')
         query_where = ''
-        query_date = "UNIX_TIMESTAMP(DATE_FORMAT(last_modified, '%y-%m-%d %k:00:00')) as timestamp"
+        query_date = "UNIX_TIMESTAMP(DATE_FORMAT(MIN(last_modified), '%y-%m-%d %k:00:00')) as timestamp"
         if minutes:
             minutes = datetime.utcnow().replace(
                 minute=0, second=0, microsecond=0) - timedelta(minutes=int(minutes))
             query_where = ' where last_modified > \'%s\' ' % str(minutes)
 
         query = (
-                "SELECT %s, count(DISTINCT encounter_id) as Count, if(CP is NULL, 0, 1) as IV "
-                "FROM pokemon "
-                " %s "
-                "GROUP BY IV, day(TIMESTAMP(last_modified)), hour(TIMESTAMP(last_modified)) "
-                "ORDER BY timestamp" % (str(query_date), str(query_where))
+            "SELECT %s, count(DISTINCT encounter_id) as Count, if(CP is NULL, 0, 1) as IV "
+            "FROM pokemon "
+            " %s "
+            "GROUP BY IV, day(TIMESTAMP(last_modified)), hour(TIMESTAMP(last_modified)) "
+            "ORDER BY timestamp" % (str(query_date), str(query_where))
         )
         res = self._db_exec.execute(query)
         return res
@@ -309,7 +310,7 @@ class DbStatsReader:
     def get_gym_count(self):
         logger.debug3('Fetching gym count from db')
         query = (
-            "SELECT If(team_id=0, 'WHITE', if(team_id=1, 'BLUE', if (team_id=2, 'RED', 'YELLOW'))) "
+            "SELECT IF(team_id=0, 'WHITE', if(team_id=1, 'BLUE', if (team_id=2, 'RED', 'YELLOW'))) "
             "AS Color, count(team_id) AS Count "
             "FROM `gym` "
             "GROUP BY team_id"
@@ -321,8 +322,8 @@ class DbStatsReader:
         logger.debug3('Fetching gym count from db')
         query = (
             "SELECT "
-            "If(FROM_UNIXTIME(trs_quest.quest_timestamp, '%y-%m-%d') IS NULL, 'NO QUEST', "
-            "FROM_UNIXTIME(trs_quest.quest_timestamp, '%y-%m-%d')) AS Quest, "
+            "IF(FROM_UNIXTIME(MIN(trs_quest.quest_timestamp), '%y-%m-%d') IS NULL, 'NO QUEST', "
+            "FROM_UNIXTIME(MIN(trs_quest.quest_timestamp), '%y-%m-%d')) AS Quest, "
             "count(pokestop.pokestop_id) AS Count "
             "FROM pokestop LEFT JOIN trs_quest ON pokestop.pokestop_id = trs_quest.GUID "
             "GROUP BY FROM_UNIXTIME(trs_quest.quest_timestamp, '%y-%m-%d')"
@@ -333,14 +334,14 @@ class DbStatsReader:
     def get_quests_count(self, days):
         logger.debug3('Fetching quests count from db')
         query_where = ""
-        query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(quest_timestamp), '%y-%m-%d %k:00:00'))"
+        query_date = "unix_timestamp(DATE_FORMAT(FROM_UNIXTIME(MIN(quest_timestamp)), '%y-%m-%d %k:00:00'))"
         if days:
             days = datetime.utcnow() - timedelta(days=days)
             query_where = "WHERE FROM_UNIXTIME(quest_timestamp) > '%s' " % str(days)
         query = (
-                "SELECT %s, count(GUID) as Count FROM trs_quest %s "
-                "GROUP BY day(FROM_UNIXTIME(quest_timestamp)), hour(FROM_UNIXTIME(quest_timestamp)) "
-                "ORDER BY quest_timestamp" % (str(query_date), str(query_where))
+            "SELECT %s, count(GUID) as Count FROM trs_quest %s "
+            "GROUP BY day(FROM_UNIXTIME(quest_timestamp)), hour(FROM_UNIXTIME(quest_timestamp)) "
+            "ORDER BY quest_timestamp" % (str(query_date), str(query_where))
         )
         res = self._db_exec.execute(query)
         return res
@@ -354,36 +355,15 @@ class DbStatsReader:
         if instance is not None:
             query_where = query_where + " AND instance = '%s' " % str(instance)
         query = (
-                "SELECT cpu, memory, garbage, timestamp, instance "
-                "FROM trs_usage %s "
-                "ORDER BY timestamp" % (str(query_where))
+            "SELECT cpu, memory, garbage, timestamp, instance "
+            "FROM trs_usage %s "
+            "ORDER BY timestamp" % (str(query_where))
         )
         res = self._db_exec.execute(query)
         return res
 
-    def check_stop_quest_level(self, worker, latitude, longitude):
-        tmp_logger = get_origin_logger(logger, origin=worker)
-        tmp_logger.debug3("DbWrapper::check_stop_quest_level called")
-        query = (
-            "SELECT trs_stats_detect_fort_raw.guid "
-            "FROM trs_stats_detect_fort_raw "
-            "INNER JOIN pokestop ON pokestop.pokestop_id = trs_stats_detect_fort_raw.guid "
-            "WHERE pokestop.latitude=%s AND pokestop.longitude=%s AND trs_stats_detect_fort_raw.worker=%s LIMIT 1"
-        )
-        data = (latitude, longitude, worker)
-
-        res = self._db_exec.execute(query, data)
-        number_of_rows = len(res)
-        if number_of_rows > 0:
-            logger.debug('Pokestop already visited')
-            return True
-        else:
-            logger.debug('Pokestop not visited till now')
-            return False
-
     def get_all_spawnpoints_count(self):
         logger.debug4("dbWrapper::get_all_spawnpoints_count")
-        spawn = []
         query = (
             "SELECT count(*) "
             "FROM `trs_spawn`"

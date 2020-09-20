@@ -21,7 +21,7 @@ class AreaMonMITM(Area):
                     "require": True,
                     "values": [False, True],
                     "empty": False,
-                    "description": "Set this open True, if you scan the area for gyms / spawnpoints the first time",
+                    "description": "Set this option to True, if you scan the area for spawnpoints for the first time",
                     "expected": bool
                 }
             },
@@ -63,7 +63,8 @@ class AreaMonMITM(Area):
                     "type": "option",
                     "require": False,
                     "values": [False, True],
-                    "description": "Scan all spawnpoints [true] or just ones with unknown endtimes [false] (Default: False)",
+                    "description": "Scan all spawnpoints [true] or just ones with unknown endtimes [false] "
+                                   "(Default: False)",
                     "expected": bool
                 }
             }

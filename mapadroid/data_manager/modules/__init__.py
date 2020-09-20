@@ -10,10 +10,11 @@ from .monivlist import MonIVList
 from .routecalc import RouteCalc
 from .walker import Walker
 from .walkerarea import WalkerArea
+from .pogoauth import PogoAuth
 from ..dm_exceptions import InvalidArea, ModeNotSpecified, ModeUnknown, UnknownIdentifier
 
 
-def AreaFactory(data_manager, identifier: Optional[int] = None, mode: Optional[str] = None) -> Resource:
+def area_factory(data_manager, identifier: Optional[int] = None, mode: Optional[str] = None) -> Resource:
     if identifier is None and mode is None:
         raise InvalidArea(mode)
     elif identifier is not None:
@@ -30,13 +31,14 @@ def AreaFactory(data_manager, identifier: Optional[int] = None, mode: Optional[s
 
 
 MAPPINGS = {
-    'area': AreaFactory,
+    'area': area_factory,
     'area_nomode': Area,
     'auth': Auth,
     'device': Device,
     'devicepool': DevicePool,
     'geofence': GeoFence,
     'monivlist': MonIVList,
+    'pogoauth': PogoAuth,
     'routecalc': RouteCalc,
     'walker': Walker,
     'walkerarea': WalkerArea

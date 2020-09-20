@@ -1,8 +1,8 @@
 import functools
 import queue
 import time
-from threading import Thread, current_thread, Lock, Event
-from typing import Dict, Optional, Set, KeysView, Coroutine, List
+from threading import Thread, current_thread, Event
+from typing import Dict, Optional, Set, Coroutine, List
 import random as rand
 import websockets
 import asyncio
@@ -57,22 +57,21 @@ class WebsocketServer(object):
         # asyncio loop for the entire server
         self.__loop: Optional[asyncio.AbstractEventLoop] = asyncio.new_event_loop()
         self.__loop_tid: int = -1
-        self.__loop_mutex = Lock()
         self.__worker_shutdown_queue: queue.Queue[Thread] = queue.Queue()
         self.__internal_worker_join_thread: Thread = Thread(name='system',
                                                             target=self.__internal_worker_join)
         self.__internal_worker_join_thread.daemon = True
 
     def _add_task_to_loop(self, coro: Coroutine):
-        f = functools.partial(self.__loop.create_task, coro)
+        create_task = functools.partial(self.__loop.create_task, coro)
         if current_thread() == self.__loop_tid:
             # We can call directly if we're not going between threads.
-            return f()
+            return create_task()
         else:
             # We're in a non-event loop thread so we use a Future
             # to get the task from the event loop thread once
             # it's ready.
-            return self.__loop.call_soon_threadsafe(f)
+            return self.__loop.call_soon_threadsafe(create_task)
 
     async def __setup_first_loop(self):
         self.__current_users_mutex: asyncio.Lock = asyncio.Lock()
@@ -165,6 +164,8 @@ class WebsocketServer(object):
             return
         origin_logger = get_origin_logger(logger, origin=origin)
         origin_logger.info("New connection from {}", websocket_client_connection.remote_address)
+        if self.__enable_configmode:
+            origin_logger.warning('Connected in ConfigMode.  No mapping will occur in the current mode')
         async with self.__users_connecting_mutex:
             if origin in self.__users_connecting:
                 origin_logger.info("Client is already connecting")
@@ -176,7 +177,17 @@ class WebsocketServer(object):
         async with self.__current_users_mutex:
             origin_logger.debug("Checking if an entry is already present")
             entry = self.__current_users.get(origin, None)
-            if entry is None:
+            device = None
+            use_configmode = self.__enable_configmode
+            if not self.__enable_configmode:
+                for _, dev in self.__data_manager.search('device', params={'origin': origin}).items():
+                    if dev['origin'] == origin:
+                        device = dev
+                        break
+                if not self.__data_manager.is_device_active(device.identifier):
+                    origin_logger.warning('Origin is currently paused. Unpause through MADmin to begin working')
+                    use_configmode = True
+            if entry is None or use_configmode:
                 origin_logger.info("Need to start a new worker thread")
 
                 entry = WebsocketConnectedClientEntry(origin=origin,
@@ -184,13 +195,13 @@ class WebsocketServer(object):
                                                       worker_instance=None,
                                                       worker_thread=None,
                                                       loop_running=self.__loop)
-                if not await self.__add_worker_and_thread_to_entry(entry, origin):
+                if not await self.__add_worker_and_thread_to_entry(entry, origin, use_configmode=use_configmode):
                     continue_register = False
             else:
                 origin_logger.info("There is a worker thread entry present, handling accordingly")
                 if entry.websocket_client_connection.open:
                     origin_logger.error("Old connection open while a new one is attempted to be established, "
-                                 "aborting handling of connection")
+                                        "aborting handling of connection")
                     continue_register = False
 
                 entry.websocket_client_connection = websocket_client_connection
@@ -200,7 +211,7 @@ class WebsocketServer(object):
                     # TODO: does this need more handling? probably update communicator or whatever?
                 elif not entry.worker_thread.is_alive():
                     origin_logger.info("Old thread is dead, trying to start a new one")
-                    if not await self.__add_worker_and_thread_to_entry(entry, origin):
+                    if not await self.__add_worker_and_thread_to_entry(entry, origin, use_configmode=use_configmode):
                         continue_register = False
                 else:
                     origin_logger.info("Old thread is about to stop. Wait a little and reconnect")
@@ -234,12 +245,12 @@ class WebsocketServer(object):
             self.__worker_shutdown_queue.put(entry.worker_thread)
         origin_logger.info("Done with connection ({})", websocket_client_connection.remote_address)
 
-    async def __add_worker_and_thread_to_entry(self, entry, origin) -> bool:
+    async def __add_worker_and_thread_to_entry(self, entry, origin, use_configmode: bool = None) -> bool:
         communicator: AbstractCommunicator = Communicator(
             entry, origin, None, self.__args.websocket_command_timeout)
+        use_configmode: bool = use_configmode if use_configmode is not None else self.__enable_configmode
         worker: Optional[AbstractWorker] = await self.__worker_factory \
-            .get_worker_using_settings(origin, self.__enable_configmode,
-                                       communicator=communicator)
+            .get_worker_using_settings(origin, use_configmode, communicator=communicator)
         if worker is None:
             return False
         # to break circular dependencies, we need to set the worker ref >.<
@@ -249,11 +260,6 @@ class WebsocketServer(object):
         entry.worker_thread = new_worker_thread
         entry.worker_instance = worker
         return True
-
-    async def __get_new_worker(self, origin: str):
-        # fetch worker from factory...
-        # TODO: determine which to use....
-        pass
 
     async def __authenticate_connection(self, websocket_client_connection: websockets.WebSocketClientProtocol) \
             -> Optional[str]:
@@ -269,16 +275,13 @@ class WebsocketServer(object):
                            websocket_client_connection.remote_address)
             return (None, False)
         origin_logger = get_origin_logger(logger, origin=origin)
-        if not self.__data_manager.is_device_active(origin):
-            origin_logger.warning('Origin is currently paused. Unpause through MADmin to begin working')
-            return (origin, False)
         origin_logger.info("Client registering")
         if self.__mapping_manager is None:
             origin_logger.warning("No configuration has been defined.  Please define in MADmin and click "
                                   "'APPLY SETTINGS'")
             (origin, False)
         elif origin not in self.__mapping_manager.get_all_devicemappings().keys():
-            if(self.__data_manager.search('device', params={'origin':origin})):
+            if(self.__data_manager.search('device', params={'origin': origin})):
                 origin_logger.warning("Device is created but not loaded.  Click 'APPLY SETTINGS' in MADmin to Update")
             else:
                 origin_logger.warning("Register attempt of unknown origin.  Please create the device in MADmin and "
@@ -374,13 +377,6 @@ class WebsocketServer(object):
         return (entry.worker_instance.set_geofix_sleeptime(sleeptime)
                 if entry is not None and entry.worker_instance is not None
                 else False)
-
-    def trigger_worker_check_research(self, origin: str) -> bool:
-        entry: Optional[WebsocketConnectedClientEntry] = self.__current_users.get(origin, None)
-        trigger_research: bool = entry is not None and entry.worker_instance is not None
-        if trigger_research:
-            entry.worker_instance.trigger_check_research()
-        return trigger_research
 
     def set_job_activated(self, origin) -> None:
         self.__mapping_manager.set_devicesetting_value_of(origin, 'job', True)

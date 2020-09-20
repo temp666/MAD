@@ -21,7 +21,7 @@ def memoize(function):
 
 
 @memoize
-def parseArgs():
+def parse_args():
     defaultconfigfiles = []
     default_tokenfile = None
     if '-cf' not in sys.argv and '--config' not in sys.argv:
@@ -64,6 +64,8 @@ def parseArgs():
                         help='Port to listen on for proto data (MITM data). Default: 8000.')
     parser.add_argument('-mrdw', '--mitmreceiver_data_workers', type=int, default=2,
                         help='Amount of workers to work off the data that queues up. Default: 2.')
+    parser.add_argument('-mipb', '--mitm_ignore_pre_boot', default=False, type=bool,
+                        help='Ignore MITM data having a timestamp pre MAD\'s startup time.')
 
     # WEBSOCKET
     parser.add_argument('-wsip', '--ws_ip', required=False, default="0.0.0.0", type=str,
@@ -120,7 +122,8 @@ def parseArgs():
                         help='Temp Folder for OCR Scanning. Default: temp')
 
     parser.add_argument('-upload', '--upload_path', default=os.path.join(mapadroid.MAD_ROOT, 'upload'),
-                        help='Path for uploaded Files via madmin and for device installation. Default: /absolute/path/to/upload')
+                        help='Path for uploaded Files via madmin and for device installation. Default: '
+                             '/absolute/path/to/upload')
 
     parser.add_argument('-pgasset', '--pogoasset', required=False,
                         help=('Path to Pogo Asset.'
@@ -182,7 +185,8 @@ def parseArgs():
                              '- urls have to start with http*')
 
     parser.add_argument('-whea', '--webhook_excluded_areas', default="",
-                        help='Comma-separated list of area names to exclude elements from within to be sent to a webhook')
+                        help='Comma-separated list of area names to exclude elements from within to be sent to a '
+                             'webhook')
     parser.add_argument('-pwh', '--pokemon_webhook', action='store_true', default=False,
                         help='Activate pokemon webhook support')
     parser.add_argument('-pwhn', '--pokemon_webhook_nonivs', action='store_true', default=False,
@@ -364,6 +368,11 @@ def parseArgs():
     parser.add_argument('-gp', '--gmail_passwd', default='',
                         help='Google Mail Password for interacting with the Google Play Store.  Must be an app'
                         ' password or 2fa will be triggered (this should be enabled on your account anyways')
+
+    # Auto-Configuration
+    parser.add_argument('-acna', '--autoconfig_no_auth', action='store_true', default=False,
+                        help='MAD PoGo auth is not required during autoconfiguration',
+                        dest='autoconfig_no_auth')
 
     args = parser.parse_args()
 

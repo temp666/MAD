@@ -1,7 +1,7 @@
 import os
 import re
 import time
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # noqa: N817
 from enum import Enum
 from typing import Optional, List, Tuple
 import numpy as np
@@ -22,9 +22,9 @@ class LoginType(Enum):
 
 
 class WordToScreenMatching(object):
-    def __init__(self, communicator, pogoWindowManager, id, resocalc, mapping_mananger: MappingManager, args):
-        self._id = id
-        self._logger = get_origin_logger(logger, origin=id)
+    def __init__(self, communicator, pogo_win_manager, origin, resocalc, mapping_mananger: MappingManager, args):
+        self.origin = origin
+        self._logger = get_origin_logger(logger, origin=origin)
         self._applicationArgs = args
         self._mapping_manager = mapping_mananger
         self._ratio: float = 0.0
@@ -37,7 +37,7 @@ class WordToScreenMatching(object):
         self._screenshot_y_offset: int = self.get_devicesettings_value('screenshot_y_offset', 0)
         self._nextscreen: ScreenType = ScreenType.UNDEFINED
 
-        self._pogoWindowManager = pogoWindowManager
+        self._pogoWindowManager = pogo_win_manager
         self._communicator = communicator
         self._resocalc = resocalc
         self._logger.info("Starting Screendetector")
@@ -49,20 +49,12 @@ class WordToScreenMatching(object):
         self._logintype = LoginType[self.get_devicesettings_value('logintype', 'google')]
         self._logger.info("Set logintype: {}", self._logintype)
         if self._logintype == LoginType.ptc:
-            temp_accounts = self.get_devicesettings_value('ptc_login', False)
+            temp_accounts = self.get_device_value('ptc_login', [])
             if not temp_accounts:
                 self._logger.warning('No PTC Accounts are set - hope we are login and never logout!')
                 self._accountcount = 0
                 return
-
-            temp_accounts = temp_accounts.replace(' ', '').split('|')
-            for account in temp_accounts:
-                ptc_temp = account.split(',')
-                if len(ptc_temp) != 2:
-                    self._logger.warning('Cannot use this account (Wrong format!): {}', account)
-                    continue
-                username = ptc_temp[0]
-                password = ptc_temp[1]
+            for username, password in temp_accounts:
                 self._PTC_accounts.append(Login_PTC(username, password))
             self._accountcount = len(self._PTC_accounts)
         else:
@@ -93,7 +85,7 @@ class WordToScreenMatching(object):
 
         if self._logintype == LoginType.ptc:
             self._logger.info('Using PTC Account: {}',
-                              self.censor_account(self._PTC_accounts[self._accountindex - 1].username, isPTC=True))
+                              self.censor_account(self._PTC_accounts[self._accountindex - 1].username, is_ptc=True))
             return self._PTC_accounts[self._accountindex - 1]
         else:
             self._logger.info('Using GGL Account: {}',
@@ -149,14 +141,14 @@ class WordToScreenMatching(object):
             self._logger.info('Screen detection is disabled')
             return ScreenType.DISABLED, global_dict, diff
         else:
-            if not self._takeScreenshot(delayBefore=self.get_devicesettings_value("post_screenshot_delay", 1),
-                                        delayAfter=2):
+            if not self._take_screenshot(delay_before=self.get_devicesettings_value("post_screenshot_delay", 1),
+                                         delay_after=2):
                 self._logger.error("_check_windows: Failed getting screenshot")
                 return ScreenType.ERROR, global_dict, diff
 
             screenpath = self.get_screenshot_path()
 
-            result = self._pogoWindowManager.screendetection_get_type_by_screen_analysis(screenpath, self._id)
+            result = self._pogoWindowManager.screendetection_get_type_by_screen_analysis(screenpath, self.origin)
             if result is None:
                 self._logger.error("Failed analyzing screen")
                 return ScreenType.ERROR, global_dict, diff
@@ -181,7 +173,7 @@ class WordToScreenMatching(object):
 
     def __handle_login_screen(self, global_dict: dict, diff: int) -> None:
         temp_dict: dict = {}
-        n_boxes = len(global_dict['level'])
+        n_boxes = len(global_dict['text'])
         self._logger.debug("Selecting login with: {}", global_dict)
         for i in range(n_boxes):
             if 'Facebook' in (global_dict['text'][i]):
@@ -323,7 +315,7 @@ class WordToScreenMatching(object):
         return screentype
 
     def __check_pogo_screen_ban_or_loading(self, screentype) -> ScreenType:
-        backgroundcolor = self._pogoWindowManager.most_frequent_colour(self.get_screenshot_path(), self._id)
+        backgroundcolor = self._pogoWindowManager.most_frequent_colour(self.get_screenshot_path(), self.origin)
         if backgroundcolor is not None and (
                 backgroundcolor[0] == 0 and
                 backgroundcolor[1] == 0 and
@@ -342,7 +334,7 @@ class WordToScreenMatching(object):
         self._nextscreen = ScreenType.UNDEFINED
         self._logger.warning('Got a black strike warning!')
         click_text = 'GOT IT,ALLES KLAR'
-        n_boxes = len(global_dict['level'])
+        n_boxes = len(global_dict['text'])
         for i in range(n_boxes):
             if any(elem.lower() in (global_dict['text'][i].lower()) for elem in click_text.split(",")):
                 self._click_center_button(diff, global_dict, i)
@@ -351,7 +343,7 @@ class WordToScreenMatching(object):
     def __handle_marketing_screen(self, diff, global_dict) -> None:
         self._nextscreen = ScreenType.POGO
         click_text = 'ERLAUBEN,ALLOW,AUTORISER'
-        n_boxes = len(global_dict['level'])
+        n_boxes = len(global_dict['text'])
         for i in range(n_boxes):
             if any(elem.lower() in (global_dict['text'][i].lower()) for elem in click_text.split(",")):
                 self._click_center_button(diff, global_dict, i)
@@ -382,7 +374,7 @@ class WordToScreenMatching(object):
     def __handle_retry_screen(self, diff, global_dict) -> None:
         self._nextscreen = ScreenType.UNDEFINED
         click_text = 'DIFFERENT,AUTRE,AUTORISER,ANDERES,KONTO,ACCOUNT'
-        n_boxes = len(global_dict['level'])
+        n_boxes = len(global_dict['text'])
         for i in range(n_boxes):
             if any(elem in (global_dict['text'][i]) for elem in click_text.split(",")):
                 self._click_center_button(diff, global_dict, i)
@@ -432,7 +424,7 @@ class WordToScreenMatching(object):
 
     def __handle_returning_player_or_wrong_credentials(self) -> None:
         self._nextscreen = ScreenType.UNDEFINED
-        self._pogoWindowManager.look_for_button(self._id, self.get_screenshot_path(), 2.20, 3.01, self._communicator,
+        self._pogoWindowManager.look_for_button(self.origin, self.get_screenshot_path(), 2.20, 3.01, self._communicator,
                                                 upper=True)
         time.sleep(2)
 
@@ -462,18 +454,17 @@ class WordToScreenMatching(object):
         self._logger.info("Processing Screen: {}", str(ScreenType(screentype)))
         return self.__handle_screentype(screentype=screentype, global_dict=global_dict, diff=diff)
 
-    def checkQuest(self, screenpath: str) -> ScreenType:
+    def check_quest(self, screenpath: str) -> ScreenType:
         if screenpath is None or len(screenpath) == 0:
             self._logger.error("Invalid screen path: {}", screenpath)
             return ScreenType.ERROR
-        globaldict = self._pogoWindowManager.get_screen_text(screenpath, self._id)
-        frame = None
+        globaldict = self._pogoWindowManager.get_screen_text(screenpath, self.origin)
 
         click_text = 'FIELD,SPECIAL,FELD,SPEZIAL,SPECIALES,TERRAIN'
         if not globaldict:
             # dict is empty
             return ScreenType.ERROR
-        n_boxes = len(globaldict['level'])
+        n_boxes = len(globaldict['text'])
         for i in range(n_boxes):
             if any(elem in (globaldict['text'][i]) for elem in click_text.split(",")):
                 self._logger.info('Found research menu')
@@ -543,12 +534,12 @@ class WordToScreenMatching(object):
         return False
 
     def set_devicesettings_value(self, key: str, value) -> None:
-        self._mapping_manager.set_devicesetting_value_of(self._id, key, value)
+        self._mapping_manager.set_devicesetting_value_of(self.origin, key, value)
 
     def get_devicesettings_value(self, key: str, default_value: object = None):
         self._logger.debug2("Fetching devicemappings")
         try:
-            devicemappings: Optional[dict] = self._mapping_manager.get_devicemappings_of(self._id)
+            devicemappings: Optional[dict] = self._mapping_manager.get_devicemappings_of(self.origin)
         except (EOFError, FileNotFoundError) as e:
             self._logger.warning("Failed fetching devicemappings in worker with description: {}. Stopping worker", e)
             return None
@@ -556,23 +547,34 @@ class WordToScreenMatching(object):
             return default_value
         return devicemappings.get("settings", {}).get(key, default_value)
 
-    def censor_account(self, emailaddress, isPTC=False):
+    def get_device_value(self, key: str, default_value: object = None):
+        self._logger.debug2("Fetching devicemappings")
+        try:
+            devicemappings: Optional[dict] = self._mapping_manager.get_devicemappings_of(self.origin)
+        except (EOFError, FileNotFoundError) as e:
+            self._logger.warning("Failed fetching devicemappings in worker with description: {}. Stopping worker", e)
+            return None
+        if devicemappings is None:
+            return default_value
+        return devicemappings.get(key, default_value)
+
+    def censor_account(self, emailaddress, is_ptc=False):
         # PTC account
-        if isPTC:
+        if is_ptc:
             return (emailaddress[0:2] + "***" + emailaddress[-2:])
         # GGL - make sure we have @ there.
         # If not it could be wrong match, so returning original
         if '@' in emailaddress:
-            d = emailaddress.split("@", 1)
+            user, domain = emailaddress.split("@", 1)
             # long local-part, censor middle part only
-            if len(d[0]) > 6:
-                return (d[0][0:2] + "***" + d[0][-2:] + "@" + d[1])
+            if len(user) > 6:
+                return (user[0:2] + "***" + user[-2:] + "@" + domain)
             # domain only, just return
-            elif len(d[0]) == 0:
+            elif len(user) == 0:
                 return (emailaddress)
             # local-part is short, asterix for each char
             else:
-                return ("*" * len(d[0]) + "@" + d[1])
+                return ("*" * len(user) + "@" + domain)
         return emailaddress
 
     def get_screenshot_path(self, fileaddon: bool = False) -> str:
@@ -584,7 +586,7 @@ class WordToScreenMatching(object):
         if fileaddon:
             addon: str = "_" + str(time.time())
 
-        screenshot_filename = "screenshot_{}{}{}".format(str(self._id), str(addon), screenshot_ending)
+        screenshot_filename = "screenshot_{}{}{}".format(str(self.origin), str(addon), screenshot_ending)
 
         if fileaddon:
             self._logger.info("Creating debugscreen: {}", screenshot_filename)
@@ -592,9 +594,9 @@ class WordToScreenMatching(object):
         return os.path.join(
             self._applicationArgs.temp_path, screenshot_filename)
 
-    def _takeScreenshot(self, delayAfter=0.0, delayBefore=0.0, errorscreen: bool = False):
+    def _take_screenshot(self, delay_after=0.0, delay_before=0.0, errorscreen: bool = False):
         self._logger.debug("Taking screenshot...")
-        time.sleep(delayBefore)
+        time.sleep(delay_before)
 
         # TODO: area settings for jpg/png and quality?
         screenshot_type: ScreenshotType = ScreenshotType.JPEG
@@ -613,5 +615,5 @@ class WordToScreenMatching(object):
         else:
             self._logger.debug("Success retrieving screenshot")
             self._lastScreenshotTaken = time.time()
-            time.sleep(delayAfter)
+            time.sleep(delay_after)
             return True

@@ -4,16 +4,14 @@ from multiprocessing.managers import SyncManager
 from queue import Empty
 from threading import Thread, Event
 from typing import Dict
+
 from mapadroid.db.DbStatsSubmit import DbStatsSubmit
 from mapadroid.mitm_receiver.PlayerStats import PlayerStats
 from mapadroid.utils.MappingManager import MappingManager
 from mapadroid.utils.collections import Location
-from mapadroid.utils.walkerArgs import parseArgs
 from mapadroid.utils.logging import get_logger, LoggerEnums, get_origin_logger
 
-
 logger = get_logger(LoggerEnums.mitm)
-args = parseArgs()
 
 
 class MitmMapperManager(SyncManager):
@@ -21,7 +19,7 @@ class MitmMapperManager(SyncManager):
 
 
 class MitmMapper(object):
-    def __init__(self, mapping_manager: MappingManager, db_stats_submit: DbStatsSubmit):
+    def __init__(self, args, mapping_manager: MappingManager, db_stats_submit: DbStatsSubmit):
         self.__mapping = {}
         self.__playerstats: Dict[str, PlayerStats] = {}
         self.__mapping_mutex = Lock()
@@ -104,14 +102,6 @@ class MitmMapper(object):
         self.__playerstats_db_update_stop.set()
         self.__playerstats_db_update_consumer.join()
         self.__playerstats_db_update_queue.close()
-        # self.__playerstats_db_update_queue.join()
-
-    def get_mon_ids_iv(self, origin):
-        devicemapping_of_origin = self.__mapping_manager.get_devicemappings_of(origin)
-        if devicemapping_of_origin is None:
-            return []
-        else:
-            return devicemapping_of_origin.get("mon_ids_iv", [])
 
     def get_levelmode(self, origin):
         device_routemananger = self.__mapping_manager.get_routemanager_name_from_device(origin)
@@ -195,14 +185,19 @@ class MitmMapper(object):
         return self.__injected.get(origin, False)
 
     def run_stats_collector(self, origin: str):
+        if not self.__application_args.game_stats:
+            pass
+
+        origin_logger = get_origin_logger(logger, origin=origin)
+        origin_logger.debug2("Running stats collector")
         if self.__playerstats.get(origin, None) is not None:
             self.__playerstats.get(origin).stats_collector()
 
-    def collect_location_stats(self, origin: str, location: Location, datarec, start_timestamp: float, type,
+    def collect_location_stats(self, origin: str, location: Location, datarec, start_timestamp: float, positiontype,
                                rec_timestamp: float, walker, transporttype):
         if self.__playerstats.get(origin, None) is not None and location is not None:
             self.__playerstats.get(origin).stats_collect_location_data(location, datarec, start_timestamp,
-                                                                       type,
+                                                                       positiontype,
                                                                        rec_timestamp, walker, transporttype)
 
     def get_playerlevel(self, origin: str):

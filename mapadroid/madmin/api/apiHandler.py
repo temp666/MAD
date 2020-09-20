@@ -18,7 +18,7 @@ class APIHandler(object):
     """
 
     def __init__(self, logger, app, api_base, data_manager, mapping_manager, ws_server, config_mode,
-                 storage_obj: AbstractAPKStorage):
+                 storage_obj: AbstractAPKStorage, args):
         self._logger = logger
         self._app = app
         self._base = api_base
@@ -26,14 +26,14 @@ class APIHandler(object):
         self.dbc = self._data_manager.dbc
         self._mapping_manager = mapping_manager
         self._ws_server = ws_server
-        self._instance = self._data_manager.instance_id
         self._config_mode = config_mode
         self.api_req = None
         self.storage_obj = storage_obj
+        self._args = args
         self.create_routes()
 
     def create_routes(self):
-        """ 
+        """
         Defines all routes required for the objects.  This must be implemented for each endpoint so the API
         can process requests
         """
@@ -76,7 +76,7 @@ class APIHandler(object):
                 return processed_data
             try:
                 resp_args = processed_data[2]
-            except:
+            except IndexError:
                 resp_args = {}
             return apiResponse.APIResponse(self._logger, self.api_req)(response_data, status_code,
                                                                        **resp_args)
@@ -84,8 +84,8 @@ class APIHandler(object):
             headers = {
                 'X-Status': 'Support Content-Types: %s' % (sorted(global_variables.SUPPORTED_FORMATS))
             }
-            self._logger.debug2('Invalid content-type recieved: {}', flask.request.headers.get('Content-Type'))
-            return apiResponse.APIResponse(self._logger, self.api_req)(None, 422, headers=headers)
+            self._logger.debug2('Invalid content-type received: {}', flask.request.headers.get('Content-Type'))
+            return apiResponse.APIResponse(self._logger, self.api_req)(None, 415, headers=headers)
         except apiException.FormattingError as err:
             headers = {
                 'X-Status': err.reason
