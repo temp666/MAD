@@ -2,10 +2,11 @@ import copy
 from functools import wraps
 import json
 from typing import Any
-from unittest import TestCase
+import unittest
 from mapadroid.tests.test_utils import get_connection_api, get_connection_mitm, ResourceCreator, GetStorage
 from mapadroid.utils.walkerArgs import parse_args
 from mapadroid.utils.autoconfig import AutoConfIssues
+from mapadroid.tests import test_variables
 
 
 args = parse_args()
@@ -86,7 +87,7 @@ def basic_autoconf(func) -> Any:
     return decorated
 
 
-class MITMAutoConf(TestCase):
+class MITMAutoConf(unittest.TestCase):
     def setUp(self):
         self.api = get_connection_api()
         self.mitm = get_connection_mitm(self.api)
@@ -262,10 +263,11 @@ class MITMAutoConf(TestCase):
         self.assertTrue(res.status_code == 200)
         res = self.mitm.get('/autoconfig/{}/google'.format(session_id))
         self.assertTrue(res.status_code == 200)
-        self.assertTrue(res.content == b'Unit\nTest')
+        self.assertTrue(res.content == b'unit\nTest')
         res = self.mitm.delete('/autoconfig/{}/complete'.format(session_id))
         self.assertTrue(res.status_code == 200)
 
+    @unittest.skip("PD emails are case sensitive")
     def test_lower_case(self):
         api_creator = ResourceCreator(self.api)
         with GetStorage(self.api):
@@ -286,3 +288,16 @@ class MITMAutoConf(TestCase):
                 self.api.delete('/api/autoconf/rgc')
                 self.api.delete('/api/autoconf/pd')
                 api_creator.remove_resources()
+
+    def test_duplicate_mac_update(self):
+        api_creator = ResourceCreator(self.api)
+        payload = copy.copy(test_variables.DEFAULT_OBJECTS['device']['payload'])
+        payload['mac_address'] = '00:1F:F3:00:1F:F3'
+        api_creator.create_valid_resource('device', payload=payload)
+        (dev_update, _) = api_creator.create_valid_resource('device')
+        dev_info = self.api.get(dev_update['uri']).json()
+        headers = {
+            'Origin': dev_info['origin']
+        }
+        res = self.mitm.post('/autoconfig/mymac', headers=headers, data=payload['mac_address'])
+        self.assertTrue(res.status_code == 422)
